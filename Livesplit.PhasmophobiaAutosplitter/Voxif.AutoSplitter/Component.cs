@@ -67,7 +67,13 @@ namespace Voxif.AutoSplitter {
                 return;
             }
 
-            if (timer.CurrentState.CurrentSplitIndex >= 0)
+            TimerPhase phase = timer.CurrentState.CurrentPhase;
+            bool canEvaluateRunState =
+                timer.CurrentState.CurrentSplitIndex >= 0
+                || phase == TimerPhase.Paused
+                || phase == TimerPhase.Ended;
+
+            if (canEvaluateRunState)
             {
                 timer.CurrentState.IsGameTimePaused = Loading();
 
@@ -76,7 +82,7 @@ namespace Voxif.AutoSplitter {
                     timer.Reset();
                     logger?.Log("Reset");
                 }
-                else if (Split())
+                else if (timer.CurrentState.CurrentSplitIndex >= 0 && Split())
                 {
                     timer.Split();
                 }

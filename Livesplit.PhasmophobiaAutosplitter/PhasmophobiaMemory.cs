@@ -12,6 +12,7 @@ namespace LiveSplit.PhasmophobiaAutosplitter
 
         private static readonly int[] PlayerBoolOffsets = { 0x28, 0x29, 0x2A, 0xE8, 0x114 };
         private static readonly int[] FirstPersonBoolOffsets = { 0x20, 0x21, 0x22, 0x23, 0x24, 0x40, 0x50, 0x51, 0x90, 0x91 };
+        private static readonly int[] PcMenuBoolOffsets = { 0x20, 0x21 };
         private const int Il2CppClassStaticFieldsOffset = 0xB8;
         private const int SingletonStaticFieldOffset = 0x0;
         private const int LobbyStableFramesRequired = 20;
@@ -24,9 +25,14 @@ namespace LiveSplit.PhasmophobiaAutosplitter
         private const int ExitLevelTruckUnloadFlagOffset = 0x28;
         private const int ExitLevelTriggerOffset = 0x30;
         private const int ExitLevelTriggerPlayersListOffset = 0x20;
-        private static readonly TimeSpan EndFallbackMinRunTime = TimeSpan.FromSeconds(15);
-        private static readonly TimeSpan NonEndResetArmMinRunTime = TimeSpan.FromSeconds(1);
-        private static readonly TimeSpan MenuLeaveWindow = TimeSpan.FromSeconds(20);
+        private const int CctvTruckPlayersListOffset = 0x100;
+        private static readonly int[] CctvTruckBoolOffsets = { 0x90, 0xA0, 0xA1 };
+        private const int CctvTruckPresenceOffsetIndex = 1; // 0xA0
+        private const int PlayerPhotonViewOffset = 0x20;
+        private const int PhotonViewIsMineOffset = 0x68;
+        private const int MaxLevelAreaCount = 512;
+        private const int MaxPlayerListCount = 64;
+        private const int MaxTriggerPlayersCount = 64;
         private static readonly TimeSpan PointerInitRetryDelay = TimeSpan.FromSeconds(1);
 
         // RVAs from tools/phasmophobia_dump_current (Unity 2022.3.40f1).
@@ -47,10 +53,10 @@ namespace LiveSplit.PhasmophobiaAutosplitter
         private bool keySpawnedNew;
         private Vector2f moveInputOld;
         private Vector2f moveInputNew;
-        private bool menuFlagOldA;
-        private bool menuFlagNewA;
-        private bool menuFlagOldB;
-        private bool menuFlagNewB;
+        private readonly bool[] pcMenuBoolOld = new bool[PcMenuBoolOffsets.Length];
+        private readonly bool[] pcMenuBoolNew = new bool[PcMenuBoolOffsets.Length];
+        private bool menuOpenOld;
+        private bool menuOpenNew;
         private readonly bool[] playerBoolOld = new bool[PlayerBoolOffsets.Length];
         private readonly bool[] playerBoolNew = new bool[PlayerBoolOffsets.Length];
         private readonly bool[] firstPersonBoolOld = new bool[FirstPersonBoolOffsets.Length];
@@ -65,21 +71,29 @@ namespace LiveSplit.PhasmophobiaAutosplitter
         private bool exitLevelFlagOld;
         private bool exitLevelFlagNew;
         private bool exitSignalAvailable;
-        private bool sawExitSignalSinceStart;
         private bool exitTriggerHasPlayersOld;
         private bool exitTriggerHasPlayersNew;
+        private bool exitTriggerContainsLocalPlayerOld;
+        private bool exitTriggerContainsLocalPlayerNew;
         private bool exitTriggerSignalAvailable;
-        private bool sawExitTriggerSinceStart;
-        private bool sawIgnoredLoadingEdgeSinceStart;
+        private bool localPlayerInTruckListOld;
+        private bool localPlayerInTruckListNew;
+        private readonly bool[] cctvTruckBoolOld = new bool[CctvTruckBoolOffsets.Length];
+        private readonly bool[] cctvTruckBoolNew = new bool[CctvTruckBoolOffsets.Length];
+        private bool sawTruckPresenceDropSinceStart;
+        private bool sawTruckPresenceReturnSinceStart;
+        private bool sawTruckUnloadSignalSinceStart;
+        private bool sawTruckExitTriggerSignalSinceStart;
+        private bool restartLoopStartSignal;
         private bool pendingResetAfterNonEndLeave;
-        private DateTime lastMenuOpenUtc = DateTime.MinValue;
         private int lobbyStableFrameCount;
+        private int pauseMenuLikelyFramesAgo = int.MaxValue;
         private bool shouldReset;
+        private bool suppressResetUntilNextStart;
 
         private IntPtr lastLevelController;
         private bool sawLoadingIntoMap;
         private bool shouldSplit;
-        private DateTime runStartTimeUtc = DateTime.MinValue;
 
         public bool pointersInitialized;
         public bool startedTimerBefore;
@@ -107,6 +121,7 @@ namespace LiveSplit.PhasmophobiaAutosplitter
                 // Always prefer reset on process close so LiveSplit doesn't get stuck running.
                 shouldSplit = false;
                 shouldReset = true;
+                suppressResetUntilNextStart = false;
                 logger?.Log("Reset candidate: process exit");
 
                 // Clear per-process transient signals without wiping run state flags that must be consumed.
@@ -114,10 +129,8 @@ namespace LiveSplit.PhasmophobiaAutosplitter
                 keySpawnedNew = false;
                 moveInputOld = default(Vector2f);
                 moveInputNew = default(Vector2f);
-                menuFlagOldA = false;
-                menuFlagNewA = false;
-                menuFlagOldB = false;
-                menuFlagNewB = false;
+                menuOpenOld = false;
+                menuOpenNew = false;
                 playerSignalPrimed = false;
                 loadingFlagOld = false;
                 loadingFlagNew = false;
@@ -127,17 +140,27 @@ namespace LiveSplit.PhasmophobiaAutosplitter
                 exitLevelFlagOld = false;
                 exitLevelFlagNew = false;
                 exitSignalAvailable = false;
-                sawExitSignalSinceStart = false;
                 exitTriggerHasPlayersOld = false;
                 exitTriggerHasPlayersNew = false;
+                exitTriggerContainsLocalPlayerOld = false;
+                exitTriggerContainsLocalPlayerNew = false;
                 exitTriggerSignalAvailable = false;
-                sawExitTriggerSinceStart = false;
-                sawIgnoredLoadingEdgeSinceStart = false;
+                localPlayerInTruckListOld = false;
+                localPlayerInTruckListNew = false;
+                Array.Clear(cctvTruckBoolOld, 0, cctvTruckBoolOld.Length);
+                Array.Clear(cctvTruckBoolNew, 0, cctvTruckBoolNew.Length);
+                sawTruckPresenceDropSinceStart = false;
+                sawTruckPresenceReturnSinceStart = false;
+                sawTruckUnloadSignalSinceStart = false;
+                sawTruckExitTriggerSignalSinceStart = false;
+                restartLoopStartSignal = false;
                 pendingResetAfterNonEndLeave = false;
-                runStartTimeUtc = DateTime.MinValue;
-                lastMenuOpenUtc = DateTime.MinValue;
                 lobbyStableFrameCount = 0;
+                pauseMenuLikelyFramesAgo = int.MaxValue;
                 lastLevelController = IntPtr.Zero;
+
+                Array.Clear(pcMenuBoolOld, 0, pcMenuBoolOld.Length);
+                Array.Clear(pcMenuBoolNew, 0, pcMenuBoolNew.Length);
             };
         }
 
@@ -176,7 +199,7 @@ namespace LiveSplit.PhasmophobiaAutosplitter
                 return false;
 
             if (startWhenTruckLoaded && truckLoadedStartEdge)
-                return MarkStart("Start: truck loaded");
+                return MarkStart("Start: contract initialized");
 
             // Unfreeze edge remains a fallback for the truck-loaded start mode.
             if (startWhenTruckLoaded && (!loadingSignalAvailable || !loadingFlagNew) && HasUnfreezeEdge())
@@ -194,16 +217,21 @@ namespace LiveSplit.PhasmophobiaAutosplitter
                 return false;
 
             shouldSplit = false;
-            sawExitSignalSinceStart = false;
-            sawExitTriggerSinceStart = false;
-            sawIgnoredLoadingEdgeSinceStart = false;
+            suppressResetUntilNextStart = true;
             sawTruckKeySinceStart = false;
+            pendingResetAfterNonEndLeave = false;
             logger?.Log("End split fired");
             return true;
         }
 
         public bool ShouldResetOnLeave()
         {
+            if (suppressResetUntilNextStart)
+            {
+                shouldReset = false;
+                return false;
+            }
+
             if (!shouldReset)
                 return false;
 
@@ -217,17 +245,13 @@ namespace LiveSplit.PhasmophobiaAutosplitter
             startedTimerBefore = false;
             shouldSplit = false;
             sawLoadingIntoMap = false;
-            runStartTimeUtc = DateTime.MinValue;
-            lastMenuOpenUtc = DateTime.MinValue;
 
             keySpawnedOld = false;
             keySpawnedNew = false;
             moveInputOld = default(Vector2f);
             moveInputNew = default(Vector2f);
-            menuFlagOldA = false;
-            menuFlagNewA = false;
-            menuFlagOldB = false;
-            menuFlagNewB = false;
+            menuOpenOld = false;
+            menuOpenNew = false;
             playerSignalPrimed = false;
             loadingFlagOld = false;
             loadingFlagNew = false;
@@ -238,16 +262,29 @@ namespace LiveSplit.PhasmophobiaAutosplitter
             exitLevelFlagOld = false;
             exitLevelFlagNew = false;
             exitSignalAvailable = false;
-            sawExitSignalSinceStart = false;
             exitTriggerHasPlayersOld = false;
             exitTriggerHasPlayersNew = false;
+            exitTriggerContainsLocalPlayerOld = false;
+            exitTriggerContainsLocalPlayerNew = false;
             exitTriggerSignalAvailable = false;
-            sawExitTriggerSinceStart = false;
-            sawIgnoredLoadingEdgeSinceStart = false;
+            localPlayerInTruckListOld = false;
+            localPlayerInTruckListNew = false;
+            Array.Clear(cctvTruckBoolOld, 0, cctvTruckBoolOld.Length);
+            Array.Clear(cctvTruckBoolNew, 0, cctvTruckBoolNew.Length);
+            sawTruckPresenceDropSinceStart = false;
+            sawTruckPresenceReturnSinceStart = false;
+            sawTruckUnloadSignalSinceStart = false;
+            sawTruckExitTriggerSignalSinceStart = false;
+            restartLoopStartSignal = false;
             pendingResetAfterNonEndLeave = false;
             lobbyStableFrameCount = 0;
+            pauseMenuLikelyFramesAgo = int.MaxValue;
             shouldReset = false;
+            suppressResetUntilNextStart = false;
             lastLevelController = IntPtr.Zero;
+
+            Array.Clear(pcMenuBoolOld, 0, pcMenuBoolOld.Length);
+            Array.Clear(pcMenuBoolNew, 0, pcMenuBoolNew.Length);
 
             for (int i = 0; i < PlayerBoolOffsets.Length; i++)
             {
@@ -268,15 +305,22 @@ namespace LiveSplit.PhasmophobiaAutosplitter
             startArmedForMapLoad = false;
             sawTruckKeySinceStart = false;
             truckLoadedStartEdge = false;
-            sawExitSignalSinceStart = false;
-            sawExitTriggerSinceStart = false;
-            sawIgnoredLoadingEdgeSinceStart = false;
+            sawTruckUnloadSignalSinceStart = false;
+            sawTruckExitTriggerSignalSinceStart = false;
+            sawTruckPresenceDropSinceStart = false;
+            sawTruckPresenceReturnSinceStart = false;
+            restartLoopStartSignal = false;
+            exitTriggerContainsLocalPlayerOld = false;
+            exitTriggerContainsLocalPlayerNew = false;
+            localPlayerInTruckListOld = false;
+            localPlayerInTruckListNew = false;
+            Array.Clear(cctvTruckBoolOld, 0, cctvTruckBoolOld.Length);
+            Array.Clear(cctvTruckBoolNew, 0, cctvTruckBoolNew.Length);
             pendingResetAfterNonEndLeave = false;
-            runStartTimeUtc = DateTime.UtcNow;
-            lastMenuOpenUtc = DateTime.MinValue;
             lobbyStableFrameCount = 0;
             shouldSplit = false;
             shouldReset = false;
+            suppressResetUntilNextStart = false;
             logger?.Log(reason);
             return true;
         }
@@ -394,28 +438,40 @@ namespace LiveSplit.PhasmophobiaAutosplitter
             return game.Read<IntPtr>(staticAddress);
         }
 
-        private IntPtr ReadFirstPlayerFromList(IntPtr listPointer)
+        private IntPtr ReadLocalPlayerFromList(IntPtr listPointer)
         {
             if (listPointer == IntPtr.Zero)
                 return IntPtr.Zero;
 
             int size = game.Read<int>(listPointer + ListSizeOffset);
-            if (size <= 0 || size > 16)
+            if (size <= 0 || size > MaxPlayerListCount)
                 return IntPtr.Zero;
 
             IntPtr itemsArray = game.Read<IntPtr>(listPointer + ListItemsOffset);
             if (itemsArray == IntPtr.Zero)
                 return IntPtr.Zero;
 
+            IntPtr firstNonNullPlayer = IntPtr.Zero;
             IntPtr firstElement = itemsArray + ArrayDataOffset;
             for (int i = 0; i < size; i++)
             {
                 IntPtr player = game.Read<IntPtr>(firstElement + (i * game.PointerSize));
-                if (player != IntPtr.Zero)
+                if (player == IntPtr.Zero)
+                    continue;
+
+                if (firstNonNullPlayer == IntPtr.Zero)
+                    firstNonNullPlayer = player;
+
+                IntPtr photonView = game.Read<IntPtr>(player + PlayerPhotonViewOffset);
+                if (photonView == IntPtr.Zero)
+                    continue;
+
+                bool isMine = game.Read<bool>(photonView + PhotonViewIsMineOffset);
+                if (isMine)
                     return player;
             }
 
-            return IntPtr.Zero;
+            return firstNonNullPlayer;
         }
 
         private bool ReadAnyExitLevelTruckUnloadFlag(IntPtr levelController, out bool hasExitLevel)
@@ -429,7 +485,7 @@ namespace LiveSplit.PhasmophobiaAutosplitter
                 return false;
 
             int areaCount = game.Read<int>(levelAreasArray + ArrayLengthOffset);
-            if (areaCount <= 0 || areaCount > 64)
+            if (areaCount <= 0 || areaCount > MaxLevelAreaCount)
                 return false;
 
             IntPtr firstElement = levelAreasArray + ArrayDataOffset;
@@ -463,7 +519,7 @@ namespace LiveSplit.PhasmophobiaAutosplitter
                 return false;
 
             int areaCount = game.Read<int>(levelAreasArray + ArrayLengthOffset);
-            if (areaCount <= 0 || areaCount > 64)
+            if (areaCount <= 0 || areaCount > MaxLevelAreaCount)
                 return false;
 
             IntPtr firstElement = levelAreasArray + ArrayDataOffset;
@@ -487,7 +543,106 @@ namespace LiveSplit.PhasmophobiaAutosplitter
                     continue;
 
                 int size = game.Read<int>(playersList + ListSizeOffset);
-                if (size > 0 && size <= 16)
+                if (size > 0 && size <= MaxTriggerPlayersCount)
+                    return true;
+            }
+
+            return false;
+        }
+
+        private bool ReadAnyExitTriggerContainsLocalPlayer(IntPtr levelController, IntPtr localPlayer, out bool hasExitTrigger)
+        {
+            hasExitTrigger = false;
+            if (levelController == IntPtr.Zero)
+                return false;
+
+            IntPtr levelAreasArray = game.Read<IntPtr>(levelController + LevelAreasArrayOffset);
+            if (levelAreasArray == IntPtr.Zero)
+                return false;
+
+            int areaCount = game.Read<int>(levelAreasArray + ArrayLengthOffset);
+            if (areaCount <= 0 || areaCount > MaxLevelAreaCount)
+                return false;
+
+            IntPtr firstElement = levelAreasArray + ArrayDataOffset;
+            for (int i = 0; i < areaCount; i++)
+            {
+                IntPtr levelArea = game.Read<IntPtr>(firstElement + (i * game.PointerSize));
+                if (levelArea == IntPtr.Zero)
+                    continue;
+
+                IntPtr exitLevel = game.Read<IntPtr>(levelArea + LevelAreaExitLevelOffset);
+                if (exitLevel == IntPtr.Zero)
+                    continue;
+
+                IntPtr trigger = game.Read<IntPtr>(exitLevel + ExitLevelTriggerOffset);
+                if (trigger == IntPtr.Zero)
+                    continue;
+
+                hasExitTrigger = true;
+                IntPtr playersList = game.Read<IntPtr>(trigger + ExitLevelTriggerPlayersListOffset);
+                if (playersList == IntPtr.Zero)
+                    continue;
+
+                int size = game.Read<int>(playersList + ListSizeOffset);
+                if (size <= 0 || size > MaxTriggerPlayersCount)
+                    continue;
+
+                IntPtr itemsArray = game.Read<IntPtr>(playersList + ListItemsOffset);
+                if (itemsArray == IntPtr.Zero)
+                    continue;
+
+                IntPtr firstItem = itemsArray + ArrayDataOffset;
+                for (int p = 0; p < size; p++)
+                {
+                    IntPtr playerPtr = game.Read<IntPtr>(firstItem + (p * game.PointerSize));
+                    if (playerPtr == IntPtr.Zero)
+                        continue;
+
+                    if (localPlayer != IntPtr.Zero && playerPtr == localPlayer)
+                        return true;
+
+                    IntPtr photonView = game.Read<IntPtr>(playerPtr + PlayerPhotonViewOffset);
+                    if (photonView == IntPtr.Zero)
+                        continue;
+
+                    if (game.Read<bool>(photonView + PhotonViewIsMineOffset))
+                        return true;
+                }
+            }
+
+            return false;
+        }
+
+        private bool ReadListContainsLocalPlayer(IntPtr listPointer, IntPtr localPlayer, out bool hasList)
+        {
+            hasList = listPointer != IntPtr.Zero;
+            if (listPointer == IntPtr.Zero)
+                return false;
+
+            int size = game.Read<int>(listPointer + ListSizeOffset);
+            if (size <= 0 || size > MaxTriggerPlayersCount)
+                return false;
+
+            IntPtr itemsArray = game.Read<IntPtr>(listPointer + ListItemsOffset);
+            if (itemsArray == IntPtr.Zero)
+                return false;
+
+            IntPtr firstItem = itemsArray + ArrayDataOffset;
+            for (int i = 0; i < size; i++)
+            {
+                IntPtr playerPtr = game.Read<IntPtr>(firstItem + (i * game.PointerSize));
+                if (playerPtr == IntPtr.Zero)
+                    continue;
+
+                if (localPlayer != IntPtr.Zero && playerPtr == localPlayer)
+                    return true;
+
+                IntPtr photonView = game.Read<IntPtr>(playerPtr + PlayerPhotonViewOffset);
+                if (photonView == IntPtr.Zero)
+                    continue;
+
+                if (game.Read<bool>(photonView + PhotonViewIsMineOffset))
                     return true;
             }
 
@@ -496,7 +651,16 @@ namespace LiveSplit.PhasmophobiaAutosplitter
 
         public bool ShouldStartForRestartLoop()
         {
-            if (!pointersInitialized || !sawLoadingIntoMap || !startArmedForMapLoad)
+            if (!pointersInitialized || !sawLoadingIntoMap)
+                return false;
+
+            if (restartLoopStartSignal)
+            {
+                restartLoopStartSignal = false;
+                return MarkStart("Start: restart loop signal");
+            }
+
+            if (!startArmedForMapLoad)
                 return false;
 
             bool startWhenTruckLoaded = settings == null || settings.StartWhenTruckLoaded;
@@ -506,7 +670,7 @@ namespace LiveSplit.PhasmophobiaAutosplitter
                 return false;
 
             if (startWhenTruckLoaded && truckLoadedStartEdge)
-                return MarkStart("Start: truck loaded");
+                return MarkStart("Start: contract initialized");
 
             if (startWhenTruckLoaded && (!loadingSignalAvailable || !loadingFlagNew) && HasUnfreezeEdge())
                 return MarkStart("Start: player unfreeze candidate");
@@ -537,11 +701,17 @@ namespace LiveSplit.PhasmophobiaAutosplitter
                 startArmedForMapLoad = true;
                 playerSignalPrimed = false;
                 truckLoadedStartEdge = false;
-                sawExitSignalSinceStart = false;
             }
 
             keySpawnedOld = keySpawnedNew;
             keySpawnedNew = keyPointer != IntPtr.Zero;
+            bool keySpawnedEdge = keySpawnedNew && !keySpawnedOld;
+            if (keySpawnedEdge && levelController != IntPtr.Zero)
+            {
+                // Fallback for cases where level controller does not drop to null between contracts.
+                sawLoadingIntoMap = true;
+                startArmedForMapLoad = true;
+            }
 
             if (levelController != IntPtr.Zero)
                 sawLoadingIntoMap = true;
@@ -550,13 +720,18 @@ namespace LiveSplit.PhasmophobiaAutosplitter
             if (mapController != IntPtr.Zero)
             {
                 IntPtr mapPlayersList = game.Read<IntPtr>(mapController + 0x28); // MapController.players
-                localPlayer = ReadFirstPlayerFromList(mapPlayersList);
+                localPlayer = ReadLocalPlayerFromList(mapPlayersList);
             }
 
+            IntPtr cctvPlayersList = IntPtr.Zero;
             if (localPlayer == IntPtr.Zero && cctvController != IntPtr.Zero)
             {
-                IntPtr cctvPlayersList = game.Read<IntPtr>(cctvController + 0x100); // CCTVController.playerList
-                localPlayer = ReadFirstPlayerFromList(cctvPlayersList);
+                cctvPlayersList = game.Read<IntPtr>(cctvController + CctvTruckPlayersListOffset); // CCTVController.player list (truck context)
+                localPlayer = ReadLocalPlayerFromList(cctvPlayersList);
+            }
+            else if (cctvController != IntPtr.Zero)
+            {
+                cctvPlayersList = game.Read<IntPtr>(cctvController + CctvTruckPlayersListOffset); // CCTVController.player list (truck context)
             }
 
             if (localPlayer == IntPtr.Zero)
@@ -576,9 +751,9 @@ namespace LiveSplit.PhasmophobiaAutosplitter
 
             loadingFlagOld = loadingFlagNew;
             loadingFlagNew = false;
-            if (loadingController != IntPtr.Zero)
+            loadingSignalAvailable = loadingController != IntPtr.Zero;
+            if (loadingSignalAvailable)
             {
-                loadingSignalAvailable = true;
                 loadingFlagNew = game.Read<bool>(loadingController + 0x30); // LoadingController loading flag candidate
             }
 
@@ -589,6 +764,39 @@ namespace LiveSplit.PhasmophobiaAutosplitter
             exitTriggerHasPlayersOld = exitTriggerHasPlayersNew;
             exitTriggerHasPlayersNew = ReadAnyExitTriggerHasPlayers(levelController, out bool hasExitTrigger);
             exitTriggerSignalAvailable = hasExitTrigger;
+            exitTriggerContainsLocalPlayerOld = exitTriggerContainsLocalPlayerNew;
+            exitTriggerContainsLocalPlayerNew = ReadAnyExitTriggerContainsLocalPlayer(levelController, localPlayer, out bool hasExitTriggerLocalPlayer);
+            if (!exitTriggerSignalAvailable)
+                exitTriggerSignalAvailable = hasExitTriggerLocalPlayer;
+
+            localPlayerInTruckListOld = localPlayerInTruckListNew;
+            localPlayerInTruckListNew = ReadListContainsLocalPlayer(cctvPlayersList, localPlayer, out bool _);
+            for (int i = 0; i < CctvTruckBoolOffsets.Length; i++)
+            {
+                cctvTruckBoolOld[i] = cctvTruckBoolNew[i];
+                cctvTruckBoolNew[i] = cctvController != IntPtr.Zero && game.Read<bool>(cctvController + CctvTruckBoolOffsets[i]);
+                if (cctvTruckBoolOld[i] != cctvTruckBoolNew[i])
+                {
+                    logger?.Log("CCTV truck bool edge 0x" + CctvTruckBoolOffsets[i].ToString("X")
+                        + " (" + cctvTruckBoolOld[i] + " -> " + cctvTruckBoolNew[i] + ")");
+                }
+            }
+            bool cctvTruckPresenceOld = cctvTruckBoolOld.Length > CctvTruckPresenceOffsetIndex && cctvTruckBoolOld[CctvTruckPresenceOffsetIndex];
+            bool cctvTruckPresenceNew = cctvTruckBoolNew.Length > CctvTruckPresenceOffsetIndex && cctvTruckBoolNew[CctvTruckPresenceOffsetIndex];
+
+            if (exitSignalAvailable && exitLevelFlagOld != exitLevelFlagNew)
+            {
+                logger?.Log("Truck unload signal edge (" + exitLevelFlagOld + " -> " + exitLevelFlagNew + ")");
+            }
+
+            if (exitTriggerSignalAvailable && exitTriggerHasPlayersOld != exitTriggerHasPlayersNew)
+            {
+                logger?.Log("Truck exit trigger players edge (" + exitTriggerHasPlayersOld + " -> " + exitTriggerHasPlayersNew + ")");
+            }
+            if (exitTriggerSignalAvailable && exitTriggerContainsLocalPlayerOld != exitTriggerContainsLocalPlayerNew)
+            {
+                logger?.Log("Truck exit trigger local-player edge (" + exitTriggerContainsLocalPlayerOld + " -> " + exitTriggerContainsLocalPlayerNew + ")");
+            }
 
             if (startArmedForMapLoad
                 && !truckLoadedStartEdge
@@ -597,77 +805,123 @@ namespace LiveSplit.PhasmophobiaAutosplitter
             {
                 truckLoadedStartEdge = true;
             }
+            if (startedTimerBefore && truckLoadedStartEdge)
+            {
+                restartLoopStartSignal = true;
+            }
 
             if (startedTimerBefore && keySpawnedNew)
             {
                 sawTruckKeySinceStart = true;
             }
 
-            if (startedTimerBefore && exitSignalAvailable && exitLevelFlagNew)
-                sawExitSignalSinceStart = true;
             if (startedTimerBefore && exitTriggerSignalAvailable && exitTriggerHasPlayersNew)
-                sawExitTriggerSinceStart = true;
-            if (startedTimerBefore && (menuFlagNewA || menuFlagNewB))
-                lastMenuOpenUtc = DateTime.UtcNow;
+            {
+                sawTruckExitTriggerSignalSinceStart = true;
+            }
+
+            if (startedTimerBefore && exitSignalAvailable && (exitLevelFlagNew || exitLevelFlagOld))
+            {
+                sawTruckUnloadSignalSinceStart = true;
+            }
+
+            if (startedTimerBefore && exitTriggerSignalAvailable && (exitTriggerContainsLocalPlayerNew || exitTriggerContainsLocalPlayerOld))
+            {
+                sawTruckExitTriggerSignalSinceStart = true;
+            }
+            if (startedTimerBefore && cctvTruckPresenceOld && !cctvTruckPresenceNew)
+            {
+                sawTruckPresenceDropSinceStart = true;
+            }
+            if (startedTimerBefore && sawTruckPresenceDropSinceStart && !cctvTruckPresenceOld && cctvTruckPresenceNew)
+            {
+                sawTruckPresenceReturnSinceStart = true;
+            }
+            if (startedTimerBefore
+                && keySpawnedEdge
+                && levelController != IntPtr.Zero
+                && (!loadingSignalAvailable || !loadingFlagNew))
+            {
+                restartLoopStartSignal = true;
+            }
+
+            bool pauseMenuLikelyOld = pcMenuBoolOld.Length >= 2 && pcMenuBoolOld[0] && pcMenuBoolOld[1];
+            bool pauseMenuLikelyNew = pcMenuBoolNew.Length >= 2 && pcMenuBoolNew[0] && pcMenuBoolNew[1];
+            if (pauseMenuLikelyNew)
+                pauseMenuLikelyFramesAgo = 0;
+            else if (pauseMenuLikelyFramesAgo < int.MaxValue - 1)
+                pauseMenuLikelyFramesAgo++;
+
+            bool loadingEdgeStarted = loadingFlagNew && !loadingFlagOld;
+            bool loadingEdgeFinished = !loadingFlagNew && loadingFlagOld;
+            bool resetWhenAtLobby = settings != null && settings.ResetWhenAtLobby;
 
             if (startedTimerBefore
                 && !shouldSplit
                 && sawTruckKeySinceStart
                 && levelController != IntPtr.Zero
-                && loadingFlagNew && !loadingFlagOld)
+                && loadingEdgeStarted)
             {
-                bool hasStrictTruckUnloadSignal =
-                    sawExitSignalSinceStart
-                    || (exitSignalAvailable && exitLevelFlagNew)
-                    || (exitSignalAvailable && (exitLevelFlagOld != exitLevelFlagNew))
-                    || sawExitTriggerSinceStart
-                    || exitTriggerHasPlayersOld
-                    || (exitTriggerSignalAvailable && exitTriggerHasPlayersNew);
-                bool hasExitTriggerEdge = exitTriggerSignalAvailable && (exitTriggerHasPlayersOld != exitTriggerHasPlayersNew);
-                if (!hasStrictTruckUnloadSignal && hasExitTriggerEdge)
-                    hasStrictTruckUnloadSignal = true;
-                bool resetWhenAtLobby = settings != null && settings.ResetWhenAtLobby;
-                bool runAgeReady = runStartTimeUtc != DateTime.MinValue
-                                && (DateTime.UtcNow - runStartTimeUtc) >= NonEndResetArmMinRunTime;
-                bool canUseFallback = runStartTimeUtc != DateTime.MinValue
-                                   && (DateTime.UtcNow - runStartTimeUtc) >= EndFallbackMinRunTime;
+                bool hasTruckTriggerSignal =
+                    exitTriggerSignalAvailable
+                    && (exitTriggerHasPlayersNew
+                        || exitTriggerHasPlayersOld
+                        || exitTriggerContainsLocalPlayerNew
+                        || exitTriggerContainsLocalPlayerOld
+                        || sawTruckExitTriggerSignalSinceStart);
 
-                if (hasStrictTruckUnloadSignal)
+                bool hasTruckUnloadStateSignal =
+                    exitSignalAvailable
+                    && (exitLevelFlagNew || exitLevelFlagOld || sawTruckUnloadSignalSinceStart);
+
+                // Use the truck exit trigger containing the local player as the authoritative
+                // end signal. The unload bool can be missing/late on some runs.
+                bool hasStrictTruckUnloadSignal = hasTruckTriggerSignal;
+                bool shouldEndForTruckLeave =
+                    (settings == null || settings.EndOnTruckUnload)
+                    && hasStrictTruckUnloadSignal;
+                bool cctvTruckPresenceNow =
+                    CctvTruckBoolOffsets.Length > CctvTruckPresenceOffsetIndex
+                    && cctvTruckBoolNew[CctvTruckPresenceOffsetIndex];
+                bool menuDrivenTransition =
+                    pauseMenuLikelyOld
+                    || pauseMenuLikelyNew
+                    || pauseMenuLikelyFramesAgo <= 120;
+                bool fallbackTruckLeaveSignal =
+                    (settings == null || settings.EndOnTruckUnload)
+                    && cctvTruckPresenceNow
+                    && sawTruckPresenceReturnSinceStart
+                    && !menuDrivenTransition;
+
+                if (shouldEndForTruckLeave || fallbackTruckLeaveSignal)
                 {
                     shouldSplit = true;
-                    logger?.Log("End candidate: truck unload loading fade started");
-
-                    if (resetWhenAtLobby && runAgeReady)
-                    {
-                        pendingResetAfterNonEndLeave = true;
-                        logger?.Log("Reset armed: post-end return to lobby");
-                    }
-                }
-                else if (canUseFallback)
-                {
-                    bool recentMenuLeave =
-                        lastMenuOpenUtc != DateTime.MinValue
-                        && (DateTime.UtcNow - lastMenuOpenUtc) <= MenuLeaveWindow;
-
-                    if (resetWhenAtLobby
-                     && !hasStrictTruckUnloadSignal
-                     && (recentMenuLeave || sawIgnoredLoadingEdgeSinceStart || pendingResetAfterNonEndLeave))
-                    {
-                        shouldReset = true;
-                        logger?.Log("Reset candidate: non-end leave fallback conversion"
-                                 + (recentMenuLeave ? " (recent menu leave)" : ""));
-                    }
-                    else
-                    {
-                        shouldSplit = true;
-                        logger?.Log("End candidate fallback: loading fade after active contract");
-                    }
+                    pendingResetAfterNonEndLeave = false;
+                    logger?.Log(shouldEndForTruckLeave
+                        ? "End candidate: truck unload signal confirmed"
+                        : "End candidate fallback: CCTV truck presence");
                 }
                 else
                 {
-                    logger?.Log("Loading edge ignored for end (not truck unload)");
-                    sawIgnoredLoadingEdgeSinceStart = true;
-                    if (resetWhenAtLobby && runAgeReady)
+                    logger?.Log("Loading edge strict check failed"
+                        + " strict=" + hasStrictTruckUnloadSignal
+                        + " unloadSignal=" + hasTruckUnloadStateSignal
+                        + " triggerSignal=" + hasTruckTriggerSignal
+                        + " triggerHasPlayers=" + (exitTriggerHasPlayersNew || exitTriggerHasPlayersOld)
+                        + " triggerLocalPlayer=" + (exitTriggerContainsLocalPlayerNew || exitTriggerContainsLocalPlayerOld)
+                        + " truckPresenceNow=" + cctvTruckPresenceNow
+                        + " truckListPresence=" + (localPlayerInTruckListOld || localPlayerInTruckListNew)
+                        + " cctv90=" + cctvTruckBoolNew[0]
+                        + " cctvA0=" + cctvTruckBoolNew[1]
+                        + " cctvA1=" + cctvTruckBoolNew[2]
+                        + " truckDropSeen=" + sawTruckPresenceDropSinceStart
+                        + " truckReturnSeen=" + sawTruckPresenceReturnSinceStart
+                        + " pcMenu20=" + pcMenuBoolNew[0]
+                        + " pcMenu21=" + pcMenuBoolNew[1]
+                        + " pauseMenuRecentFrames=" + pauseMenuLikelyFramesAgo
+                        + " menuDriven=" + menuDrivenTransition);
+
+                    if (resetWhenAtLobby)
                     {
                         pendingResetAfterNonEndLeave = true;
                         logger?.Log("Reset armed: non-end leave transition");
@@ -677,39 +931,35 @@ namespace LiveSplit.PhasmophobiaAutosplitter
 
             if (startedTimerBefore
              && !shouldSplit
-             && settings != null
-             && settings.ResetWhenAtLobby
+             && resetWhenAtLobby
              && pendingResetAfterNonEndLeave
-             && !loadingFlagNew)
+             && loadingEdgeFinished)
             {
-                shouldReset = true;
+                if (!suppressResetUntilNextStart)
+                {
+                    shouldReset = true;
+                    logger?.Log("Reset candidate: non-end leave settled");
+                }
+
                 pendingResetAfterNonEndLeave = false;
-                logger?.Log("Reset candidate: non-end leave settled");
             }
 
             bool atLobbyNow = !loadingFlagNew
                            && levelController == IntPtr.Zero;
 
-            if (startedTimerBefore && !shouldSplit && atLobbyNow && settings != null && settings.ResetWhenAtLobby)
+            if (startedTimerBefore && !shouldSplit && !suppressResetUntilNextStart && atLobbyNow && resetWhenAtLobby)
                 lobbyStableFrameCount++;
             else
                 lobbyStableFrameCount = 0;
 
             if (startedTimerBefore
              && !shouldSplit
-             && settings != null
-             && settings.ResetWhenAtLobby
+             && !suppressResetUntilNextStart
+             && resetWhenAtLobby
              && lobbyStableFrameCount >= LobbyStableFramesRequired)
             {
                 shouldReset = true;
                 pendingResetAfterNonEndLeave = false;
-            }
-
-            // Always reset on a new contract load if a previous run is still active.
-            if (startedTimerBefore && !shouldSplit && levelLoadedNow)
-            {
-                shouldReset = true;
-                logger?.Log("Reset candidate: new contract loaded while previous run active");
             }
 
             lastLevelController = levelController;
@@ -718,8 +968,8 @@ namespace LiveSplit.PhasmophobiaAutosplitter
         private void PrimePlayerSignals(IntPtr player)
         {
             moveInputNew = default(Vector2f);
-            menuFlagNewA = false;
-            menuFlagNewB = false;
+            menuOpenNew = false;
+            Array.Clear(pcMenuBoolNew, 0, pcMenuBoolNew.Length);
 
             IntPtr firstPersonController = game.Read<IntPtr>(player + 0x128); // Player.firstPersonController
             if (firstPersonController != IntPtr.Zero)
@@ -732,16 +982,20 @@ namespace LiveSplit.PhasmophobiaAutosplitter
             IntPtr pcMenu = game.Read<IntPtr>(player + 0x150); // Player.pcMenu
             if (pcMenu != IntPtr.Zero)
             {
-                menuFlagNewA = game.Read<bool>(pcMenu + 0x20); // PCMenu candidate open flag
-                menuFlagNewB = game.Read<bool>(pcMenu + 0x21); // PCMenu candidate open flag
+                for (int i = 0; i < PcMenuBoolOffsets.Length; i++)
+                {
+                    bool value = game.Read<bool>(pcMenu + PcMenuBoolOffsets[i]);
+                    pcMenuBoolNew[i] = value;
+                    menuOpenNew |= value;
+                }
             }
 
             for (int i = 0; i < PlayerBoolOffsets.Length; i++)
                 playerBoolNew[i] = game.Read<bool>(player + PlayerBoolOffsets[i]);
 
             moveInputOld = moveInputNew;
-            menuFlagOldA = menuFlagNewA;
-            menuFlagOldB = menuFlagNewB;
+            menuOpenOld = menuOpenNew;
+            Array.Copy(pcMenuBoolNew, pcMenuBoolOld, pcMenuBoolNew.Length);
             for (int i = 0; i < PlayerBoolOffsets.Length; i++)
                 playerBoolOld[i] = playerBoolNew[i];
             for (int i = 0; i < FirstPersonBoolOffsets.Length; i++)
@@ -751,8 +1005,8 @@ namespace LiveSplit.PhasmophobiaAutosplitter
         private void UpdatePlayerSignals(IntPtr player)
         {
             moveInputOld = moveInputNew;
-            menuFlagOldA = menuFlagNewA;
-            menuFlagOldB = menuFlagNewB;
+            menuOpenOld = menuOpenNew;
+            Array.Copy(pcMenuBoolNew, pcMenuBoolOld, pcMenuBoolNew.Length);
             for (int i = 0; i < PlayerBoolOffsets.Length; i++)
                 playerBoolOld[i] = playerBoolNew[i];
             for (int i = 0; i < FirstPersonBoolOffsets.Length; i++)
@@ -773,23 +1027,30 @@ namespace LiveSplit.PhasmophobiaAutosplitter
             }
 
             IntPtr pcMenu = game.Read<IntPtr>(player + 0x150); // Player.pcMenu
-            menuFlagNewA = false;
-            menuFlagNewB = false;
+            menuOpenNew = false;
+            Array.Clear(pcMenuBoolNew, 0, pcMenuBoolNew.Length);
             if (pcMenu != IntPtr.Zero)
             {
-                menuFlagNewA = game.Read<bool>(pcMenu + 0x20); // PCMenu candidate open flag
-                menuFlagNewB = game.Read<bool>(pcMenu + 0x21); // PCMenu candidate open flag
+                for (int i = 0; i < PcMenuBoolOffsets.Length; i++)
+                {
+                    bool value = game.Read<bool>(pcMenu + PcMenuBoolOffsets[i]);
+                    pcMenuBoolNew[i] = value;
+                    menuOpenNew |= value;
+                }
             }
 
             for (int i = 0; i < PlayerBoolOffsets.Length; i++)
                 playerBoolNew[i] = game.Read<bool>(player + PlayerBoolOffsets[i]);
+
+            if (menuOpenOld != menuOpenNew)
+                logger?.Log("Menu open edge (" + menuOpenOld + " -> " + menuOpenNew + ")");
         }
 
         private void AdvancePlayerSignalsWithoutChanges()
         {
             moveInputOld = moveInputNew;
-            menuFlagOldA = menuFlagNewA;
-            menuFlagOldB = menuFlagNewB;
+            menuOpenOld = menuOpenNew;
+            Array.Copy(pcMenuBoolNew, pcMenuBoolOld, pcMenuBoolNew.Length);
             for (int i = 0; i < PlayerBoolOffsets.Length; i++)
                 playerBoolOld[i] = playerBoolNew[i];
             for (int i = 0; i < FirstPersonBoolOffsets.Length; i++)

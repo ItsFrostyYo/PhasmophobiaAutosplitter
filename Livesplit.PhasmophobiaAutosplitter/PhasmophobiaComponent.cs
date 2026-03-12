@@ -10,6 +10,8 @@ namespace LiveSplit.PhasmophobiaAutosplitter
     {
         private readonly PhasmophobiaMemory memory;
         private bool queuedStartAfterAutoReset;
+        private bool skipMemoryResetOnce;
+        private bool autoRestartResetInFlight;
 
         public PhasmophobiaComponent(LiveSplitState state) : base(state)
         {
@@ -33,6 +35,8 @@ namespace LiveSplit.PhasmophobiaAutosplitter
                 // Keep component logic running even while process is between sessions,
                 // so pending split/reset flags can still be consumed.
                 memory.Update();
+                if (autoRestartResetInFlight && timer.CurrentState.CurrentPhase == TimerPhase.Running)
+                    autoRestartResetInFlight = false;
                 return true;
             }
             catch (Win32Exception ex)
@@ -55,7 +59,7 @@ namespace LiveSplit.PhasmophobiaAutosplitter
             if (queuedStartAfterAutoReset)
             {
                 queuedStartAfterAutoReset = false;
-                logger?.Log("Start candidate: restart loop");
+                logger?.Log("Start: queued after auto-reset");
                 return true;
             }
 
@@ -69,14 +73,28 @@ namespace LiveSplit.PhasmophobiaAutosplitter
 
         public override bool Reset()
         {
-            bool restartLoopPhase =
-                timer.CurrentState.CurrentPhase == TimerPhase.Paused
-                || timer.CurrentState.CurrentPhase == TimerPhase.Ended;
+            if (!settings.EnableAutoResetOnLeave)
+                return false;
 
-            if (restartLoopPhase && settings.EnableStartSplit && memory.ShouldStartForRestartLoop())
+            TimerPhase phase = timer.CurrentState.CurrentPhase;
+            bool timerActivePhase = phase != TimerPhase.NotRunning;
+            bool restartSignal = memory.ShouldStartForRestartLoop();
+
+            // If the timer is paused/ended, also accept the normal start signal
+            // as a restart trigger so it can auto reset + start cleanly.
+            if (!restartSignal && (phase == TimerPhase.Paused || phase == TimerPhase.Ended))
+                restartSignal = memory.ShouldStart();
+
+            if (timerActivePhase
+                && !autoRestartResetInFlight
+                && !queuedStartAfterAutoReset
+                && settings.EnableStartSplit
+                && restartSignal)
             {
-                queuedStartAfterAutoReset = true;
                 logger?.Log("Reset candidate: restart loop on new contract start");
+                queuedStartAfterAutoReset = true;
+                skipMemoryResetOnce = true;
+                autoRestartResetInFlight = true;
                 return true;
             }
 
@@ -87,9 +105,16 @@ namespace LiveSplit.PhasmophobiaAutosplitter
 
         public override void OnReset()
         {
+            if (skipMemoryResetOnce)
+            {
+                skipMemoryResetOnce = false;
+                return;
+            }
+
             if (queuedStartAfterAutoReset)
                 return;
 
+            autoRestartResetInFlight = false;
             memory.ResetRunState();
         }
 

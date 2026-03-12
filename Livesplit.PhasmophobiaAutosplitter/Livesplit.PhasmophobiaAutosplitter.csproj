@@ -76,6 +76,12 @@
   <PropertyGroup>
     <PostBuildEvent></PostBuildEvent>
     <CopyLocalLockFileAssemblies>false</CopyLocalLockFileAssemblies>
+    <LiveSplitComponentsDir Condition="'$(LiveSplitComponentsDir)' == ''">$(USERPROFILE)\Desktop\LiveSplit\LiveSplit_1.8.37\Components</LiveSplitComponentsDir>
   </PropertyGroup>
+
+  <Target Name="CopyToLiveSplitComponents" AfterTargets="Build" Condition="Exists('$(LiveSplitComponentsDir)') and Exists('$(TargetPath)')">
+    <Copy SourceFiles="$(TargetPath)" DestinationFolder="$(LiveSplitComponentsDir)" SkipUnchangedFiles="true" />
+    <Message Text="Copied $(TargetFileName) to $(LiveSplitComponentsDir)" Importance="High" />
+  </Target>
 </Project>
 

@@ -3,8 +3,11 @@
 Livesplit.PhasmophobiaAutosplitter/bin/
 Livesplit.PhasmophobiaAutosplitter/obj/
 Livesplit.PhasmophobiaAutosplitter/External/
+tools/
+Releases/*.zip
 
 *.user
 *.suo
 *.userosscache
 *.sln.docstates
+_*.log
