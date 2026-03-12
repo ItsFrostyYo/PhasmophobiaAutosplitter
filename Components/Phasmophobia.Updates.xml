@@ -1,11 +1,11 @@
 ﻿<?xml version="1.0" encoding="utf-8" ?>
 <updates>
-    <update version="1.0.1.25">
+    <update version="1.0.1.26">
         <files>
             <file path="Components/LiveSplit.PhasmophobiaAutosplitter.dll" status="changed"/>
         </files>
         <changelog>
-            <change>Full Phasmophobia-only cleanup: removed legacy split systems/resources and simplified project layout for testing and publishing</change>
+            <change>Fix duplicate Autosplitter naming in LiveSplit component title and bump revision</change>
         </changelog>
     </update>
 </updates>

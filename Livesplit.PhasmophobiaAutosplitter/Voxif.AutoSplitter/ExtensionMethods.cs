@@ -77,7 +77,12 @@ namespace Voxif.AutoSplitter {
                 sb.Append(((ComponentNameAttribute)componentNameAttribute[0]).Value);
             }
 
-            sb.Append(" Autosplitter v").Append(asm.GetName().Version.ToString(4));
+            string componentTitle = sb.ToString().Trim();
+            if(!componentTitle.EndsWith("Autosplitter", StringComparison.OrdinalIgnoreCase)) {
+                sb.Append(" Autosplitter");
+            }
+
+            sb.Append(" v").Append(asm.GetName().Version.ToString(4));
             return sb.ToString();
         }
         public static string GitMainURL(this Assembly asm) => Path.Combine("https://raw.githubusercontent.com/KalebAustin", asm.GetName().Name, "main/");
