@@ -1,11 +1,11 @@
 ﻿<?xml version="1.0" encoding="utf-8" ?>
 <updates>
-    <update version="1.0.1.26">
+    <update version="1.0.1.27">
         <files>
             <file path="Components/LiveSplit.PhasmophobiaAutosplitter.dll" status="changed"/>
         </files>
         <changelog>
-            <change>Fix duplicate Autosplitter naming in LiveSplit component title and bump revision</change>
+            <change>Point component auto-update URL to the correct GitHub repository and bump revision</change>
         </changelog>
     </update>
 </updates>

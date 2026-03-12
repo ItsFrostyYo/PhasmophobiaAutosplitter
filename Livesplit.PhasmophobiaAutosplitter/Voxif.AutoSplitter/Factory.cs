@@ -19,7 +19,7 @@ namespace LiveSplit.PhasmophobiaAutosplitter {
 
         public string XMLURL => UpdateURL + "Components/Phasmophobia.Updates.xml";
 
-        public string UpdateURL => "https://raw.githubusercontent.com/KalebAustin/PhasmoAutosplitter/main/";
+        public string UpdateURL => "https://raw.githubusercontent.com/ItsFrostyYo/PhasmophobiaAutosplitter/main/";
 
         public Version Version => ExAssembly.GetName().Version;
 
