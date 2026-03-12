@@ -1,0 +1,10 @@
+.vs/
+
+Livesplit.Phasmophobia/bin/
+Livesplit.Phasmophobia/obj/
+Livesplit.Phasmophobia/External/
+
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
