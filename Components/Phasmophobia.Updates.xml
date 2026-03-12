@@ -5,7 +5,7 @@
             <file path="Components/LiveSplit.PhasmophobiaAutosplitter.dll" status="changed"/>
         </files>
         <changelog>
-            <change>Point component auto-update URL to the correct GitHub repository and bump revision</change>
+            <change>First Real Release with Start, End, and Reset options</change>
         </changelog>
     </update>
 </updates>
