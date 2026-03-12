@@ -2,10 +2,11 @@
 <updates>
     <update version="1.0.1.25">
         <files>
-            <file path="Components/LiveSplit.Phasmophobia.dll" status="changed"/>
+            <file path="Components/LiveSplit.PhasmophobiaAutosplitter.dll" status="changed"/>
         </files>
         <changelog>
             <change>Full Phasmophobia-only cleanup: removed legacy split systems/resources and simplified project layout for testing and publishing</change>
         </changelog>
     </update>
 </updates>
+

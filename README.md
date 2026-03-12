@@ -1,4 +1,4 @@
-﻿# LiveSplit.Phasmophobia
+﻿# LiveSplit.PhasmophobiaAutosplitter
 This LiveSplit Auto Splitter provides automatic start, end split, and reset for Phasmophobia by tracking in-game memory values.
 
 ## Features
@@ -40,3 +40,4 @@ If this happens, restart LiveSplit or reload the Auto Splitter
 
 # Contributing
 Bug reports and code improvements are welcome.
+

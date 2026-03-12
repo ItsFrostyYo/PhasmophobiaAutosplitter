@@ -1,10 +1,10 @@
-using LiveSplit.Phasmophobia;
+﻿using LiveSplit.PhasmophobiaAutosplitter;
 using LiveSplit.Model;
 using LiveSplit.UI.Components;
 using System;
 using System.Reflection;
 
-namespace LiveSplit.Phasmophobia {
+namespace LiveSplit.PhasmophobiaAutosplitter {
     public class Factory : IComponentFactory {
         private static string FullVersion => ExAssembly.GetName().Version.ToString(4);
         private static string RevisionTag => "r" + ExAssembly.GetName().Version.Revision;
@@ -28,3 +28,4 @@ namespace LiveSplit.Phasmophobia {
         public static Assembly ExAssembly = Assembly.GetExecutingAssembly();
     }
 }
+

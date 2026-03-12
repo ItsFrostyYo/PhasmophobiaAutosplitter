@@ -1,8 +1,8 @@
-.vs/
+﻿.vs/
 
-Livesplit.Phasmophobia/bin/
-Livesplit.Phasmophobia/obj/
-Livesplit.Phasmophobia/External/
+Livesplit.PhasmophobiaAutosplitter/bin/
+Livesplit.PhasmophobiaAutosplitter/obj/
+Livesplit.PhasmophobiaAutosplitter/External/
 
 *.user
 *.suo

@@ -4,7 +4,7 @@ using System.Linq;
 using Voxif.IO;
 using Voxif.Memory;
 
-namespace LiveSplit.Phasmophobia
+namespace LiveSplit.PhasmophobiaAutosplitter
 {
     public class PhasmophobiaMemory : Memory
     {
@@ -811,3 +811,4 @@ namespace LiveSplit.Phasmophobia
         }
     }
 }
+

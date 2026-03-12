@@ -1,4 +1,4 @@
-﻿using LiveSplit.Phasmophobia;
+﻿using LiveSplit.PhasmophobiaAutosplitter;
 using LiveSplit.UI.Components;
 
 using System.Reflection;
@@ -9,11 +9,11 @@ using System.Runtime.InteropServices;
 // General Information about an assembly is controlled through the following
 // set of attributes. Change these attribute values to modify the information
 // associated with an assembly.
-[assembly: AssemblyTitle("Livesplit.Phasmophobia")]
+[assembly: AssemblyTitle("Livesplit.PhasmophobiaAutosplitter")]
 [assembly: AssemblyDescription("Autosplitter for Phasmophobia")]
 [assembly: AssemblyConfiguration("")]
 [assembly: AssemblyCompany("Kaleb Austin")]
-[assembly: AssemblyProduct("Livesplit.Phasmophobia")]
+[assembly: AssemblyProduct("Livesplit.PhasmophobiaAutosplitter")]
 [assembly: AssemblyCopyright("Copyright (c) 2026 Kaleb Austin")]
 [assembly: AssemblyTrademark("")]
 [assembly: AssemblyCulture("")]
@@ -37,3 +37,4 @@ using System.Runtime.InteropServices;
 [assembly: AssemblyFileVersion("1.0.1.25")]
 
 [assembly: ComponentFactory(typeof(Factory))]
+

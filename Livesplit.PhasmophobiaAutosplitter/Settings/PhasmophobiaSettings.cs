@@ -1,9 +1,9 @@
-using LiveSplit.Model;
+﻿using LiveSplit.Model;
 using System.Drawing;
 using System.Windows.Forms;
 using System.Xml;
 
-namespace LiveSplit.Phasmophobia
+namespace LiveSplit.PhasmophobiaAutosplitter
 {
     public class PhasmophobiaSettings : UserControl
     {
@@ -276,3 +276,4 @@ namespace LiveSplit.Phasmophobia
         }
     }
 }
+

@@ -4,7 +4,7 @@ using System.ComponentModel;
 using Voxif.AutoSplitter;
 using Voxif.IO;
 
-namespace LiveSplit.Phasmophobia
+namespace LiveSplit.PhasmophobiaAutosplitter
 {
     public class PhasmophobiaComponent : Voxif.AutoSplitter.Component
     {
@@ -100,3 +100,4 @@ namespace LiveSplit.Phasmophobia
         }
     }
 }
+

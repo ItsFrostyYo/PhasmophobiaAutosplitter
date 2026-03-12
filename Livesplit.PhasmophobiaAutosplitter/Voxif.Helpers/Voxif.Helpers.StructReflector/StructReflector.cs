@@ -1,4 +1,4 @@
-using LiveSplit.Options;
+﻿using LiveSplit.Options;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -13,7 +13,7 @@ namespace Voxif.Helpers.StructReflector {
 
             Assembly assembly = Assembly.GetExecutingAssembly();            
 
-            using (StreamReader reader = new StreamReader(assembly.GetManifestResourceStream("LiveSplit.Phasmophobia.Voxif.Helpers.Voxif.Helpers.Unity." + resourcePath + ".txt"))) {
+            using (StreamReader reader = new StreamReader(assembly.GetManifestResourceStream("LiveSplit.PhasmophobiaAutosplitter.Voxif.Helpers.Voxif.Helpers.Unity." + resourcePath + ".txt"))) {
 
                 string baseVersion = reader.ReadLine();
                 if(!String.IsNullOrEmpty(baseVersion)) {

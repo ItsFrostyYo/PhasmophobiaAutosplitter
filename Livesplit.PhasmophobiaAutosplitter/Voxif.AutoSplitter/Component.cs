@@ -1,4 +1,4 @@
-using LiveSplit.Phasmophobia;
+﻿using LiveSplit.PhasmophobiaAutosplitter;
 using LiveSplit.Model;
 using LiveSplit.UI;
 using LiveSplit.UI.Components;
@@ -40,7 +40,7 @@ namespace Voxif.AutoSplitter {
                 timer.InitializeGameTime();
 
                 if(IsGameTimeDefault && state.CurrentTimingMethod == TimingMethod.RealTime) {
-                    string gameName = LiveSplit.Phasmophobia.Factory.ExAssembly.Description().Substring(17);
+                    string gameName = LiveSplit.PhasmophobiaAutosplitter.Factory.ExAssembly.Description().Substring(17);
                     string timingName = GameTimeType == EGameTime.GameTime ? "In-Game Time" : "Time without Loads";
                     DialogResult result = MessageBox.Show(
                         String.Concat(gameName, " uses " + timingName + " as the main timing method.", Environment.NewLine,
@@ -58,7 +58,7 @@ namespace Voxif.AutoSplitter {
             }
         }
 
-        public override string ComponentName => LiveSplit.Phasmophobia.Factory.ExAssembly.FullComponentName();
+        public override string ComponentName => LiveSplit.PhasmophobiaAutosplitter.Factory.ExAssembly.FullComponentName();
         public override Control GetSettingsControl(LayoutMode mode) => settings;
         public override XmlNode GetSettings(XmlDocument document) => settings.UpdateSettings(document);
         public override void SetSettings(XmlNode settings) => this.settings.SetSettings(settings);
@@ -238,3 +238,4 @@ namespace Voxif.AutoSplitter {
         }
     }
 }
+
