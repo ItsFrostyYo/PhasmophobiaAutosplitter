@@ -297,9 +297,9 @@ namespace LiveSplit.PhasmophobiaAutosplitter
 
             shouldSplit = false;
             hasSplitThisRun = true;
-            // In multi-contract mode, block auto-reset until the next real start,
-            // so finishing a contract does not cause a reset back at the lobby.
-            suppressResetUntilNextStart = settings != null && settings.EnableMultiContract;
+            // Keep reset suppression behavior independent of Multi-Contract;
+            // multi-contract lobby reset protection is handled separately.
+            suppressResetUntilNextStart = settings == null || !settings.EnableMultiContract;
             sawTruckKeySinceStart = false;
             sawTruckUnloadSignalSinceStart = false;
             sawTruckExitTriggerSignalSinceStart = false;
