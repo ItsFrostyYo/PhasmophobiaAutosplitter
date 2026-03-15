@@ -591,7 +591,21 @@ namespace LiveSplit.PhasmophobiaAutosplitter
                     bool minPauseElapsed = inSecondLoadingDuration >= TimeSpan.FromSeconds(1.0);
                     bool fallbackUnpauseOk = loadRemovalSecondLoadingInLevelNotLoadingCount >= 3
                         && (minPauseElapsed && (loadRemovalSecondLoadingSawLoading || inSecondLoadingDuration >= TimeSpan.FromSeconds(2.0)));
-                    bool canUnpause = truckLoadedStartEdge || fallbackUnpauseOk;
+                    // For the second load (contract board), wait until the black pixel
+                    // is actually gone before unpausing, even if the start pointer
+                    // has already triggered. This avoids under-removing load when
+                    // the board is still on screen for a few frames.
+                    bool boardPixelGone = true;
+                    if (frame == null)
+                        frame = WindowCapture.TryCaptureWindow(hWnd);
+                    if (frame != null && WindowCapture.GetClientRectScreen(hWnd, out _, out _, out int clientW2, out int clientH2))
+                    {
+                        int px2 = (PinRefX * clientW2) / PinRefWidth;
+                        int py2 = (PinRefY * clientH2) / PinRefHeight;
+                        boardPixelGone = !WindowCapture.IsPixelBlack(frame, px2, py2, 1);
+                    }
+
+                    bool canUnpause = boardPixelGone && (truckLoadedStartEdge || fallbackUnpauseOk);
                     if (levelController != IntPtr.Zero && canUnpause)
                     {
                         loadRemovalState = LoadRemovalState.None;
@@ -1365,10 +1379,28 @@ namespace LiveSplit.PhasmophobiaAutosplitter
                         + " pauseMenuRecentFrames=" + pauseMenuLikelyFramesAgo
                         + " menuDriven=" + menuDrivenTransition);
 
-                    if (resetWhenAtLobby)
+                    // Only arm a non-end-leave reset when not in multi-contract mode
+                    // after a split. In multi-contract runs, we never want a lobby
+                    // reset just because the leave wasn't classified as an "end".
+                    if (resetWhenAtLobby && !(useMultiContract && hasSplitThisRun))
                     {
                         pendingResetAfterNonEndLeave = true;
                         logger?.Log("Reset armed: non-end leave transition");
+                    }
+
+                    // When Multi-Contract + Load Removal are on, still run load removal
+                    // on normal leaves (no split): pause during loading, unpause in lobby/next contract.
+                    if (useMultiContract && hasSplitThisRun && settings != null && settings.EnableLoadTimeRemoval)
+                    {
+                        loadRemovalState = LoadRemovalState.FirstLoading;
+                        loadRemovalFirstLoadingSawBlack = false;
+                        loadRemovalFirstLoadingNotBlackConsecutive = 0;
+                        loadRemovalSecondPauseStartUtc = DateTime.MinValue;
+                        loadRemovalInLobbySinceUtc = DateTime.MinValue;
+                        loadRemovalBoardColorConsecutiveFrames = 0;
+                        loadRemovalSecondLoadingInLevelNotLoadingCount = 0;
+                        loadRemovalSecondLoadingSawLoading = false;
+                        logger?.Log("Load removal: normal leave → pausing for load");
                     }
                 }
             }
@@ -1379,7 +1411,9 @@ namespace LiveSplit.PhasmophobiaAutosplitter
              && pendingResetAfterNonEndLeave
              && loadingEdgeFinished)
             {
-                if (!suppressResetUntilNextStart)
+                // In multi-contract runs after a split, do not turn a non-end
+                // leave into a reset; the run should continue to the next contract.
+                if (!suppressResetUntilNextStart && !(useMultiContract && hasSplitThisRun))
                 {
                     shouldReset = true;
                     logger?.Log("Reset candidate: non-end leave settled");

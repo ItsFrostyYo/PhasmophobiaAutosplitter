@@ -31,8 +31,8 @@ Automatic start, split, reset, and optional load removal for Phasmophobia. Track
 - Allow Resetting on Contract Leave, Game Close and New Run Start – when on, the timer resets when you leave without finishing, when the game closes, or when a new run is detected. When off, all of that is disabled.
 
 **Options**
-- **Multi-Contract** – lets you do several maps in one run without resetting after every finished contract.
-- **Load Time Removal (Game Time)** – pauses Game Time during loading after a split. **Note:** this uses pixel detection, not memory, so it may not be as consistent as start/split/reset and can depend on resolution and possibly UI settings, attempts to scale with monitor.
+- **Multi-Contract** – lets you do several maps in one run without resetting after every finished contract. After your first split, auto-resets at lobby are blocked so you can chain contracts; splitting still happens every time you leave from the truck.
+- **Load Time Removal (Game Time)** – pauses Game Time during loading after a split, then unpauses when you reach lobby or the next contract. Works on normal leaves as well as truck leaves. **Note:** this uses pixel detection, not memory, so it may not be as consistent as start/split/reset and can depend on resolution and possibly UI settings, attempts to scale with monitor.
 - **Warn on Reset if Gold** – uses LiveSplit’s reset confirmation when the current attempt has at least one gold split. Applies to every reset.
 
 ## Known issues

@@ -32,4 +32,12 @@
             <change>Separated Multi-Contract and Load Time Removal options, improved load-removal pixel warnings and Known Issues text, and fixed multi-contract behavior so it works even when Load Time Removal is disabled.</change>
         </changelog>
     </update>
+    <update version="1.0.5.0">
+        <files>
+            <file path="Components/LiveSplit.PhasmophobiaAutosplitter.dll" status="changed"/>
+        </files>
+        <changelog>
+            <change>Clarified README and behavior notes for Multi-Contract and Load Time Removal, documenting how splits and resets behave across chained contracts.</change>
+        </changelog>
+    </update>
 </updates>
