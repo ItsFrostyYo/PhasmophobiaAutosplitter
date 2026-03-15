@@ -81,9 +81,13 @@ namespace LiveSplit.PhasmophobiaAutosplitter
             Dock = DockStyle.Top;
             Margin = new Padding(0);
             Padding = new Padding(0);
-            MinimumSize = new Size(540, 300);
-            MaximumSize = new Size(540, 300);
-            Size = new Size(540, 300);
+            // Slightly wider/taller for readability, but still small enough
+            // that LiveSplit's settings dialog won't clip the right borders.
+            int settingsWidth = 460;
+            int settingsHeight = 340;
+            MinimumSize = new Size(settingsWidth, settingsHeight);
+            MaximumSize = new Size(settingsWidth, settingsHeight);
+            Size = new Size(settingsWidth, settingsHeight);
 
             toolTips = new ToolTip
             {
@@ -100,20 +104,20 @@ namespace LiveSplit.PhasmophobiaAutosplitter
                 ColumnCount = 2,
                 RowCount = 2,
                 Margin = new Padding(0),
-                Padding = new Padding(4)
+                Padding = new Padding(6)
             };
             root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50f));
             root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50f));
-            root.RowStyles.Add(new RowStyle(SizeType.Absolute, 148f));
-            root.RowStyles.Add(new RowStyle(SizeType.Absolute, 136f));
+            root.RowStyles.Add(new RowStyle(SizeType.Absolute, 142f));
+            root.RowStyles.Add(new RowStyle(SizeType.Absolute, 168f));
 
             var grpStartEndReset = new GroupBox
             {
                 Text = "Start / Split / Reset",
                 AutoSize = false,
                 Dock = DockStyle.Fill,
-                Margin = new Padding(0, 0, 6, 6),
-                Padding = new Padding(8, 18, 8, 8)
+                Margin = new Padding(0, 0, 4, 4),
+                Padding = new Padding(6, 14, 6, 6)
             };
 
             var leftFlow = new FlowLayoutPanel
@@ -154,7 +158,7 @@ namespace LiveSplit.PhasmophobiaAutosplitter
             chkAllowResetting = new CheckBox
             {
                 AutoSize = false,
-                Size = new Size(220, 34),
+                Size = new Size(196, 34),
                 Text = "Allow Resetting on Leave, Game Close,\r\nand New Run Start",
                 Checked = ResetWhenAtLobby,
                 Margin = new Padding(0),
@@ -185,8 +189,8 @@ namespace LiveSplit.PhasmophobiaAutosplitter
                 Text = "Options",
                 AutoSize = false,
                 Dock = DockStyle.Fill,
-                Margin = new Padding(0, 0, 0, 6),
-                Padding = new Padding(8, 18, 8, 8)
+                Margin = new Padding(4, 0, 0, 4),
+                Padding = new Padding(6, 14, 6, 6)
             };
 
             var optionsFlow = new FlowLayoutPanel
@@ -260,17 +264,17 @@ namespace LiveSplit.PhasmophobiaAutosplitter
                 AutoSize = false,
                 Dock = DockStyle.Fill,
                 Margin = new Padding(0),
-                Padding = new Padding(8, 18, 8, 8)
+                Padding = new Padding(6, 14, 6, 6)
             };
             var lblKnownIssues = new Label
             {
                 AutoSize = false,
                 Dock = DockStyle.Fill,
-                Text = "- Load Time Removal uses pixel detection, not memory, so it may not be as consistent as start/split/reset and can depend on resolution and possibly UI settings, attempts to scale with monitor.\n"
+                Text = "- Load Time Removal uses pixel detection, not memory, so it may not be as\n  consistent as start/split/reset and can depend on resolution and possibly UI\n  settings, attempts to scale with monitor.\n"
                      + "- Leaving the truck and re-entering WILL be treated as a split.\n"
-                     + "- Multiplayer can break memory, be unreliable, resulting in Double Splits, never unpause timer and possible never split.\n"
-                     + "- Game updates can break memory or pixel detection until the autosplitter is updated.\n"
-                     + "- Restarting the game can rarely break detection; restart LiveSplit or reload the component if that happens.",
+                     + "- Multiplayer can break memory, be unreliable, resulting in Double Splits,\n  never unpause timer and possible never split.\n"
+                     + "- Game updates can break memory or pixel detection until the autosplitter\n  is updated.\n"
+                     + "- Restarting the game can rarely break detection; restart LiveSplit or\n  reload the component if that happens.",
                 Margin = new Padding(0),
                 TextAlign = ContentAlignment.TopLeft
             };
