@@ -21,7 +21,15 @@
             <file path="Components/LiveSplit.PhasmophobiaAutosplitter.dll" status="changed"/>
         </files>
         <changelog>
-            <change>Pixel-based load removal (black screen and contract-board pin), Updated Options tab. All resets use Warn on Reset if Gold when enabled.</change>
+            <change>Pixel-based load removal (first load and contract-board load), updated Options tab, all resets use Warn on Reset if Gold when enabled.</change>
+        </changelog>
+    </update>
+    <update version="1.0.4.0">
+        <files>
+            <file path="Components/LiveSplit.PhasmophobiaAutosplitter.dll" status="changed"/>
+        </files>
+        <changelog>
+            <change>Separated Multi-Contract and Load Time Removal options, improved load-removal pixel warnings and Known Issues text, and fixed multi-contract behavior so it works even when Load Time Removal is disabled.</change>
         </changelog>
     </update>
 </updates>
