@@ -1,4 +1,5 @@
 using LiveSplit.Model;
+using System;
 using System.Drawing;
 using System.Windows.Forms;
 using System.Xml;
@@ -8,14 +9,20 @@ namespace LiveSplit.PhasmophobiaAutosplitter
     public class PhasmophobiaSettings : UserControl
     {
         private readonly CheckBox chkStartWhenContractInitialization;
-        private readonly CheckBox chkEndOnContractFinish;
+        private readonly CheckBox chkSplitOnContractFinish;
         private readonly CheckBox chkAllowResetting;
+        private readonly CheckBox chkMultiContract;
+        private readonly CheckBox chkLoadTimeRemoval;
+        private readonly CheckBox chkWarnOnResetIfGold;
         private readonly ToolTip toolTips;
 
         public bool StartWhenTruckLoaded { get; set; } = true;
         public bool StartOnFirstMovement { get; private set; } = true;
-        public bool EndOnTruckUnload { get; set; } = true;
+        public bool SplitOnContractFinish { get; set; } = true;
         public bool ResetWhenAtLobby { get; set; } = true;
+        public bool MultiContractEnabled { get; set; } = false;
+        public bool LoadTimeRemovalEnabled { get; set; } = false;
+        public bool WarnOnResetIfGold { get; set; } = false;
 
         // Compatibility properties used by existing component/memory flow.
         public bool IntroStart
@@ -40,6 +47,17 @@ namespace LiveSplit.PhasmophobiaAutosplitter
             }
         }
 
+        // Kept as compatibility alias for older references.
+        public bool EndOnTruckUnload
+        {
+            get => SplitOnContractFinish;
+            set
+            {
+                SplitOnContractFinish = value;
+                SyncUiFromState();
+            }
+        }
+
         // Kept for compatibility with shared base component logic.
         public bool Reset
         {
@@ -52,8 +70,10 @@ namespace LiveSplit.PhasmophobiaAutosplitter
         }
 
         public bool EnableStartSplit => StartWhenTruckLoaded;
-        public bool EnableEndSplit => EndOnTruckUnload;
+        public bool EnableEndSplit => SplitOnContractFinish;
         public bool EnableAutoResetOnLeave => ResetWhenAtLobby;
+        public bool EnableMultiContract => MultiContractEnabled;
+        public bool EnableLoadTimeRemoval => LoadTimeRemovalEnabled;
 
         public PhasmophobiaSettings(LiveSplitState state)
         {
@@ -61,9 +81,9 @@ namespace LiveSplit.PhasmophobiaAutosplitter
             Dock = DockStyle.Top;
             Margin = new Padding(0);
             Padding = new Padding(0);
-            MinimumSize = new Size(500, 280);
-            MaximumSize = new Size(500, 280);
-            Size = new Size(500, 280);
+            MinimumSize = new Size(540, 300);
+            MaximumSize = new Size(540, 300);
+            Size = new Size(540, 300);
 
             toolTips = new ToolTip
             {
@@ -84,12 +104,12 @@ namespace LiveSplit.PhasmophobiaAutosplitter
             };
             root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50f));
             root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50f));
-            root.RowStyles.Add(new RowStyle(SizeType.Absolute, 128f));
-            root.RowStyles.Add(new RowStyle(SizeType.Absolute, 128f));
+            root.RowStyles.Add(new RowStyle(SizeType.Absolute, 148f));
+            root.RowStyles.Add(new RowStyle(SizeType.Absolute, 136f));
 
             var grpStartEndReset = new GroupBox
             {
-                Text = "Start / End / Reset",
+                Text = "Start / Split / Reset",
                 AutoSize = false,
                 Dock = DockStyle.Fill,
                 Margin = new Padding(0, 0, 6, 6),
@@ -119,23 +139,23 @@ namespace LiveSplit.PhasmophobiaAutosplitter
                 SyncUiFromState();
             };
 
-            chkEndOnContractFinish = new CheckBox
+            chkSplitOnContractFinish = new CheckBox
             {
                 AutoSize = true,
-                Text = "End on Contract Finish",
-                Checked = EndOnTruckUnload,
+                Text = "Split on Contract Finish",
+                Checked = SplitOnContractFinish,
                 Margin = new Padding(0, 0, 0, 6)
             };
-            chkEndOnContractFinish.CheckedChanged += (s, e) =>
+            chkSplitOnContractFinish.CheckedChanged += (s, e) =>
             {
-                EndOnTruckUnload = chkEndOnContractFinish.Checked;
+                SplitOnContractFinish = chkSplitOnContractFinish.Checked;
             };
 
             chkAllowResetting = new CheckBox
             {
                 AutoSize = false,
-                Size = new Size(205, 34),
-                Text = "Allow Resetting on Contract Leave,\r\nGame Close and New Run Start",
+                Size = new Size(220, 34),
+                Text = "Allow Resetting on Leave, Game Close,\r\nand New Run Start",
                 Checked = ResetWhenAtLobby,
                 Margin = new Padding(0),
                 UseVisualStyleBackColor = true
@@ -147,16 +167,16 @@ namespace LiveSplit.PhasmophobiaAutosplitter
 
             toolTips.SetToolTip(
                 chkStartWhenContractInitialization,
-                "Start:\nStarts the timer when the player and truck are completely finished initalizing and the player is allowed to move.\nBackup trigger: if contract initialization is missed, start on first movement.");
+                "Start:\nStarts the timer when the player and truck are completely finished initializing and the player is allowed to move.\nBackup trigger: if contract initialization is missed, start on first movement.");
             toolTips.SetToolTip(
-                chkEndOnContractFinish,
-                "End:\nSplits when a loading transition is triggered while you are inside the truck.");
+                chkSplitOnContractFinish,
+                "Split:\nSplits when a contract-finish loading transition is triggered from truck context.");
             toolTips.SetToolTip(
                 chkAllowResetting,
-                "Reset:\nAllows reset on contract leave, game close, and new run start detection.\nIf this is off, all auto-reset behavior is disabled.");
+                "Reset:\nAllows reset on contract leave, game close, and new run start detection while timer is running.\nIf this is off, all auto-reset behavior is disabled.");
 
             leftFlow.Controls.Add(chkStartWhenContractInitialization);
-            leftFlow.Controls.Add(chkEndOnContractFinish);
+            leftFlow.Controls.Add(chkSplitOnContractFinish);
             leftFlow.Controls.Add(chkAllowResetting);
             grpStartEndReset.Controls.Add(leftFlow);
 
@@ -168,18 +188,71 @@ namespace LiveSplit.PhasmophobiaAutosplitter
                 Margin = new Padding(0, 0, 0, 6),
                 Padding = new Padding(8, 18, 8, 8)
             };
-            var lblOptions = new Label
+
+            var optionsFlow = new FlowLayoutPanel
             {
                 AutoSize = false,
                 Dock = DockStyle.Fill,
-                Text = "More Options might be added here in future updates.\n(Like Full Game Load Removal)",
+                FlowDirection = FlowDirection.TopDown,
+                WrapContents = false,
+                AutoScroll = true,
                 Margin = new Padding(0),
-                TextAlign = ContentAlignment.TopLeft
+                Padding = new Padding(0)
             };
+
+            chkMultiContract = new CheckBox
+            {
+                AutoSize = true,
+                Text = "Multi-Contract",
+                Checked = MultiContractEnabled,
+                Margin = new Padding(0, 0, 0, 2),
+                UseVisualStyleBackColor = true
+            };
+            chkMultiContract.CheckedChanged += (s, e) =>
+            {
+                MultiContractEnabled = chkMultiContract.Checked;
+            };
+
+            chkLoadTimeRemoval = new CheckBox
+            {
+                AutoSize = true,
+                Text = "Load Time Removal (Game Time)",
+                Checked = LoadTimeRemovalEnabled,
+                Margin = new Padding(0, 0, 0, 4),
+                UseVisualStyleBackColor = true
+            };
+            chkLoadTimeRemoval.CheckedChanged += (s, e) =>
+            {
+                LoadTimeRemovalEnabled = chkLoadTimeRemoval.Checked;
+            };
+
+            chkWarnOnResetIfGold = new CheckBox
+            {
+                AutoSize = true,
+                Text = "Warn on Reset if Gold",
+                Checked = WarnOnResetIfGold,
+                Margin = new Padding(0, 0, 0, 4),
+                UseVisualStyleBackColor = true
+            };
+            chkWarnOnResetIfGold.CheckedChanged += (s, e) =>
+            {
+                WarnOnResetIfGold = chkWarnOnResetIfGold.Checked;
+            };
+
             toolTips.SetToolTip(
-                lblOptions,
-                "Options:\nMore Options might be added here in future updates. (Like Full Game Load Removal)");
-            grpOptions.Controls.Add(lblOptions);
+                chkMultiContract,
+                "Options:\nMulti-Contract: lets you chain contracts/maps in one attempt without resetting after a split.\nReal Time and Game Time behavior outside resets is unchanged.");
+            toolTips.SetToolTip(
+                chkLoadTimeRemoval,
+                "Options:\nLoad Time Removal: when using Game Time, loading-screen time after a split is removed.\nUses pixel detection, not memory, so it may be less consistent on some setups.\nReal Time is unchanged.");
+            toolTips.SetToolTip(
+                chkWarnOnResetIfGold,
+                "Options:\nShows LiveSplit's reset confirmation prompt when the current attempt has at least one gold split.");
+
+            optionsFlow.Controls.Add(chkMultiContract);
+            optionsFlow.Controls.Add(chkLoadTimeRemoval);
+            optionsFlow.Controls.Add(chkWarnOnResetIfGold);
+            grpOptions.Controls.Add(optionsFlow);
 
             var grpKnownIssues = new GroupBox
             {
@@ -194,7 +267,7 @@ namespace LiveSplit.PhasmophobiaAutosplitter
                 AutoSize = false,
                 Dock = DockStyle.Fill,
                 Text = "- Leaving truck then re-entering can treat a normal leave\n"
-                     + "  loading transition as a split/end.\n"
+                     + "  loading transition as a split.\n"
                      + "- Multiplayer may be unreliable.\n"
                      + "- Game updates can break memory signatures until the\n"
                      + "  autosplitter is updated.\n"
@@ -220,8 +293,14 @@ namespace LiveSplit.PhasmophobiaAutosplitter
 
             AddBool(document, xmlSettings, "StartWhenTruckLoaded", StartWhenTruckLoaded);
             AddBool(document, xmlSettings, "StartOnFirstMovement", StartOnFirstMovement);
-            AddBool(document, xmlSettings, "EndOnTruckUnload", EndOnTruckUnload);
+            AddBool(document, xmlSettings, "EndOnTruckUnload", SplitOnContractFinish);
+            AddBool(document, xmlSettings, "SplitOnContractFinish", SplitOnContractFinish);
             AddBool(document, xmlSettings, "ResetWhenAtLobby", ResetWhenAtLobby);
+            AddBool(document, xmlSettings, "MultiContractEnabled", MultiContractEnabled);
+            AddBool(document, xmlSettings, "LoadTimeRemovalEnabled", LoadTimeRemovalEnabled);
+            // Legacy combined flag for backward compatibility: keep writing it so older layouts still see a value.
+            AddBool(document, xmlSettings, "MultiContractLoadRemoval", MultiContractEnabled && LoadTimeRemovalEnabled);
+            AddBool(document, xmlSettings, "WarnOnResetIfGold", WarnOnResetIfGold);
             AddBool(document, xmlSettings, "EnableStartSplit", EnableStartSplit);
             AddBool(document, xmlSettings, "EnableEndSplit", EnableEndSplit);
             AddBool(document, xmlSettings, "EnableAutoResetOnLeave", ResetWhenAtLobby);
@@ -239,6 +318,10 @@ namespace LiveSplit.PhasmophobiaAutosplitter
             bool startTruckLoaded = ReadBool(settings, "StartWhenTruckLoaded", true);
             bool endOnTruckUnload = ReadBool(settings, "EndOnTruckUnload", true);
             bool resetAtLobby = ReadBool(settings, "ResetWhenAtLobby", true);
+            bool multiContractEnabled = ReadBool(settings, "MultiContractEnabled", false);
+            bool loadTimeRemovalEnabled = ReadBool(settings, "LoadTimeRemovalEnabled", false);
+            bool legacyCombined = ReadBool(settings, "MultiContractLoadRemoval", false);
+            bool warnOnResetIfGold = ReadBool(settings, "WarnOnResetIfGold", false);
 
             // Backward compatibility with older config keys.
             if (!HasNode(settings, "StartWhenTruckLoaded"))
@@ -247,10 +330,20 @@ namespace LiveSplit.PhasmophobiaAutosplitter
                 endOnTruckUnload = ReadBool(settings, "EnableEndSplit", true);
             if (!HasNode(settings, "ResetWhenAtLobby"))
                 resetAtLobby = ReadBool(settings, "EnableAutoResetOnLeave", true) || ReadBool(settings, "Reset", true);
+            // If new separate flags are missing but the old combined flag exists, use it for both.
+            if (!HasNode(settings, "MultiContractEnabled") && HasNode(settings, "MultiContractLoadRemoval"))
+                multiContractEnabled = legacyCombined;
+            if (!HasNode(settings, "LoadTimeRemovalEnabled") && HasNode(settings, "MultiContractLoadRemoval"))
+                loadTimeRemovalEnabled = legacyCombined;
+            if (!HasNode(settings, "WarnOnResetIfGold"))
+                warnOnResetIfGold = false;
 
             StartWhenTruckLoaded = startTruckLoaded;
-            EndOnTruckUnload = endOnTruckUnload;
+            SplitOnContractFinish = endOnTruckUnload;
             ResetWhenAtLobby = resetAtLobby;
+            MultiContractEnabled = multiContractEnabled;
+            LoadTimeRemovalEnabled = loadTimeRemovalEnabled;
+            WarnOnResetIfGold = warnOnResetIfGold;
             SyncUiFromState();
         }
 
@@ -261,10 +354,16 @@ namespace LiveSplit.PhasmophobiaAutosplitter
 
             if (chkStartWhenContractInitialization != null)
                 chkStartWhenContractInitialization.Checked = StartWhenTruckLoaded;
-            if (chkEndOnContractFinish != null)
-                chkEndOnContractFinish.Checked = EndOnTruckUnload;
+            if (chkSplitOnContractFinish != null)
+                chkSplitOnContractFinish.Checked = SplitOnContractFinish;
             if (chkAllowResetting != null)
                 chkAllowResetting.Checked = ResetWhenAtLobby;
+            if (chkMultiContract != null)
+                chkMultiContract.Checked = MultiContractEnabled;
+            if (chkLoadTimeRemoval != null)
+                chkLoadTimeRemoval.Checked = LoadTimeRemovalEnabled;
+            if (chkWarnOnResetIfGold != null)
+                chkWarnOnResetIfGold.Checked = WarnOnResetIfGold;
         }
 
         private static bool HasNode(XmlNode root, string name)

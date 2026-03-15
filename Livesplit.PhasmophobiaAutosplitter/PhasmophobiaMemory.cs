@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using Voxif.AutoSplitter;
 using System.Linq;
 using Voxif.IO;
@@ -6,6 +6,14 @@ using Voxif.Memory;
 
 namespace LiveSplit.PhasmophobiaAutosplitter
 {
+    internal enum LoadRemovalState
+    {
+        None,
+        FirstLoading,
+        InLobby,
+        SecondLoading
+    }
+
     public class PhasmophobiaMemory : Memory
     {
         protected override string[] ProcessNames => new[] { "Phasmophobia" };
@@ -28,18 +36,34 @@ namespace LiveSplit.PhasmophobiaAutosplitter
         private const int CctvTruckPlayersListOffset = 0x100;
         private static readonly int[] CctvTruckBoolOffsets = { 0x90, 0xA0, 0xA1 };
         private const int CctvTruckPresenceOffsetIndex = 1; // 0xA0
+        private const int PlayerVrLoadingOffset = 0x1D0;
+        private const int VrLoadingIsLoadScreenInstanceOffset = 0x48;
+        private const int VrLoadingProgressOffset = 0x4C;
+        private const int VrLoadingProgressAuxOffset = 0x50;
         private const int PlayerPhotonViewOffset = 0x20;
         private const int PhotonViewIsMineOffset = 0x68;
+        private const int MainManagerServerManagerOffset = 0x50;
+        private const int ServerManagerLeaveButtonOffset = 0xD0;
+        private const int ServerManagerStartGameButtonOffset = 0xE8;
+        private const int SelectableIsPointerDownOffset = 0xF1;
         private const int MaxLevelAreaCount = 512;
         private const int MaxPlayerListCount = 64;
         private const int MaxTriggerPlayersCount = 64;
         private static readonly TimeSpan PointerInitRetryDelay = TimeSpan.FromSeconds(1);
+        private const int PauseMenuRecentFrames = 120;
+        private const int PinRefWidth = 1920;
+        private const int PinRefHeight = 1080;
+        private const int PinRefX = 808;
+        private const int PinRefY = 945;
+        private static readonly TimeSpan LoadRemovalSecondPauseTimeout = TimeSpan.FromSeconds(45);
 
         // RVAs from tools/phasmophobia_dump_current (Unity 2022.3.40f1).
         private const int LevelControllerTypeInfoRva = 0x05D586A0;
         private const int MapControllerTypeInfoRva = 0x05D5FE60;
         private const int CCTVControllerTypeInfoRva = 0x05D701F0;
         private const int LoadingControllerTypeInfoRva = 0x05D5C1B0;
+        private const int MainManagerTypeInfoRva = 0x05D5F710;
+        private const int LevelValuesTypeInfoRva = 0x05D58928;
 
         private readonly PhasmophobiaSettings settings;
         private DateTime nextPointerInitAttempt = DateTime.MinValue;
@@ -48,6 +72,8 @@ namespace LiveSplit.PhasmophobiaAutosplitter
         private IntPtr mapControllerStaticAddress;
         private IntPtr cctvControllerStaticAddress;
         private IntPtr loadingControllerStaticAddress;
+        private IntPtr mainManagerStaticAddress;
+        private IntPtr levelValuesStaticAddress;
 
         private bool keySpawnedOld;
         private bool keySpawnedNew;
@@ -65,6 +91,15 @@ namespace LiveSplit.PhasmophobiaAutosplitter
         private bool loadingFlagOld;
         private bool loadingFlagNew;
         private bool loadingSignalAvailable;
+        private bool vrLoadingSignalAvailable;
+        private bool vrLoadScreenInstanceOld;
+        private bool vrLoadScreenInstanceNew;
+        private float vrLoadingProgressOld;
+        private float vrLoadingProgressNew;
+        private float vrLoadingProgressAuxOld;
+        private float vrLoadingProgressAuxNew;
+        private bool vrLoadingLikelyOld;
+        private bool vrLoadingLikelyNew;
         private bool startArmedForMapLoad;
         private bool sawTruckKeySinceStart;
         private bool truckLoadedStartEdge;
@@ -90,14 +125,31 @@ namespace LiveSplit.PhasmophobiaAutosplitter
         private int pauseMenuLikelyFramesAgo = int.MaxValue;
         private bool shouldReset;
         private bool suppressResetUntilNextStart;
+        private bool startGameButtonDownOld;
+        private bool startGameButtonDownNew;
+        private bool leaveLobbyButtonDownOld;
+        private bool leaveLobbyButtonDownNew;
+        private IntPtr lastKnownLocalPlayer;
+        private int framesSinceLocalPlayerSeen;
 
         private IntPtr lastLevelController;
         private bool sawLoadingIntoMap;
         private bool shouldSplit;
+        private bool hasSplitThisRun;
+        private bool hadLocalPlayerLastFrame;
 
+        private LoadRemovalState loadRemovalState = LoadRemovalState.None;
+        private DateTime loadRemovalSecondPauseStartUtc = DateTime.MinValue;
+        private DateTime loadRemovalInLobbySinceUtc = DateTime.MinValue;
+        private bool loadRemovalFirstLoadingSawBlack;
+        private int loadRemovalFirstLoadingNotBlackConsecutive;
+        private int loadRemovalBoardColorConsecutiveFrames;
+        private int loadRemovalSecondLoadingInLevelNotLoadingCount;
+        private bool loadRemovalSecondLoadingSawLoading;
+        private const int BlackRefX = 1825;
+        private const int BlackRefY = 83;
         public bool pointersInitialized;
         public bool startedTimerBefore;
-
         public PhasmophobiaMemory(Logger logger, PhasmophobiaSettings settings) : base(logger)
         {
             this.settings = settings;
@@ -116,13 +168,18 @@ namespace LiveSplit.PhasmophobiaAutosplitter
                 mapControllerStaticAddress = IntPtr.Zero;
                 cctvControllerStaticAddress = IntPtr.Zero;
                 loadingControllerStaticAddress = IntPtr.Zero;
+                mainManagerStaticAddress = IntPtr.Zero;
+                levelValuesStaticAddress = IntPtr.Zero;
                 nextPointerInitAttempt = DateTime.MinValue;
 
                 // Always prefer reset on process close so LiveSplit doesn't get stuck running.
                 shouldSplit = false;
-                shouldReset = true;
+                shouldReset = settings != null && settings.ResetWhenAtLobby;
                 suppressResetUntilNextStart = false;
-                logger?.Log("Reset candidate: process exit");
+                lastKnownLocalPlayer = IntPtr.Zero;
+                framesSinceLocalPlayerSeen = int.MaxValue;
+                if (shouldReset)
+                    logger?.Log("Reset candidate: process exit");
 
                 // Clear per-process transient signals without wiping run state flags that must be consumed.
                 keySpawnedOld = false;
@@ -135,6 +192,15 @@ namespace LiveSplit.PhasmophobiaAutosplitter
                 loadingFlagOld = false;
                 loadingFlagNew = false;
                 loadingSignalAvailable = false;
+                vrLoadingSignalAvailable = false;
+                vrLoadScreenInstanceOld = false;
+                vrLoadScreenInstanceNew = false;
+                vrLoadingProgressOld = 0f;
+                vrLoadingProgressNew = 0f;
+                vrLoadingProgressAuxOld = 0f;
+                vrLoadingProgressAuxNew = 0f;
+                vrLoadingLikelyOld = false;
+                vrLoadingLikelyNew = false;
                 startArmedForMapLoad = false;
                 truckLoadedStartEdge = false;
                 exitLevelFlagOld = false;
@@ -157,7 +223,20 @@ namespace LiveSplit.PhasmophobiaAutosplitter
                 pendingResetAfterNonEndLeave = false;
                 lobbyStableFrameCount = 0;
                 pauseMenuLikelyFramesAgo = int.MaxValue;
+                startGameButtonDownOld = false;
+                startGameButtonDownNew = false;
+                leaveLobbyButtonDownOld = false;
+                leaveLobbyButtonDownNew = false;
                 lastLevelController = IntPtr.Zero;
+                hadLocalPlayerLastFrame = false;
+                loadRemovalState = LoadRemovalState.None;
+                loadRemovalSecondPauseStartUtc = DateTime.MinValue;
+                loadRemovalInLobbySinceUtc = DateTime.MinValue;
+                loadRemovalFirstLoadingSawBlack = false;
+                loadRemovalFirstLoadingNotBlackConsecutive = 0;
+                loadRemovalBoardColorConsecutiveFrames = 0;
+                loadRemovalSecondLoadingInLevelNotLoadingCount = 0;
+                loadRemovalSecondLoadingSawLoading = false;
 
                 Array.Clear(pcMenuBoolOld, 0, pcMenuBoolOld.Length);
                 Array.Clear(pcMenuBoolNew, 0, pcMenuBoolNew.Length);
@@ -169,7 +248,7 @@ namespace LiveSplit.PhasmophobiaAutosplitter
             if (!base.Update())
                 return false;
 
-            if (!pointersInitialized)
+            if (!pointersInitialized || mainManagerStaticAddress == IntPtr.Zero)
                 TryInitPointers();
 
             if (!pointersInitialized || game == null)
@@ -217,12 +296,30 @@ namespace LiveSplit.PhasmophobiaAutosplitter
                 return false;
 
             shouldSplit = false;
-            suppressResetUntilNextStart = true;
+            hasSplitThisRun = true;
+            suppressResetUntilNextStart = settings == null || !settings.EnableMultiContract;
             sawTruckKeySinceStart = false;
+            sawTruckUnloadSignalSinceStart = false;
+            sawTruckExitTriggerSignalSinceStart = false;
+            sawTruckPresenceDropSinceStart = false;
+            sawTruckPresenceReturnSinceStart = false;
+            exitTriggerContainsLocalPlayerOld = false;
+            exitTriggerContainsLocalPlayerNew = false;
+            localPlayerInTruckListOld = false;
+            localPlayerInTruckListNew = false;
             pendingResetAfterNonEndLeave = false;
-            logger?.Log("End split fired");
+            if (settings != null && settings.EnableLoadTimeRemoval)
+            {
+                loadRemovalState = LoadRemovalState.FirstLoading;
+                loadRemovalFirstLoadingSawBlack = false;
+                loadRemovalFirstLoadingNotBlackConsecutive = 0;
+                logger?.Log("Load removal: split → pausing for load");
+            }
+            logger?.Log("Split fired");
             return true;
         }
+
+        public bool HasSplitOccurredThisRun() => hasSplitThisRun;
 
         public bool ShouldResetOnLeave()
         {
@@ -245,6 +342,25 @@ namespace LiveSplit.PhasmophobiaAutosplitter
             startedTimerBefore = false;
             shouldSplit = false;
             sawLoadingIntoMap = false;
+            hasSplitThisRun = false;
+            hadLocalPlayerLastFrame = false;
+            loadRemovalState = LoadRemovalState.None;
+            loadRemovalSecondPauseStartUtc = DateTime.MinValue;
+            loadRemovalInLobbySinceUtc = DateTime.MinValue;
+            loadRemovalFirstLoadingSawBlack = false;
+            loadRemovalFirstLoadingNotBlackConsecutive = 0;
+            loadRemovalBoardColorConsecutiveFrames = 0;
+            loadRemovalSecondLoadingInLevelNotLoadingCount = 0;
+            loadRemovalSecondLoadingSawLoading = false;
+            vrLoadingSignalAvailable = false;
+            vrLoadScreenInstanceOld = false;
+            vrLoadScreenInstanceNew = false;
+            vrLoadingProgressOld = 0f;
+            vrLoadingProgressNew = 0f;
+            vrLoadingProgressAuxOld = 0f;
+            vrLoadingProgressAuxNew = 0f;
+            vrLoadingLikelyOld = false;
+            vrLoadingLikelyNew = false;
 
             keySpawnedOld = false;
             keySpawnedNew = false;
@@ -279,9 +395,15 @@ namespace LiveSplit.PhasmophobiaAutosplitter
             pendingResetAfterNonEndLeave = false;
             lobbyStableFrameCount = 0;
             pauseMenuLikelyFramesAgo = int.MaxValue;
+            startGameButtonDownOld = false;
+            startGameButtonDownNew = false;
+            leaveLobbyButtonDownOld = false;
+            leaveLobbyButtonDownNew = false;
             shouldReset = false;
             suppressResetUntilNextStart = false;
             lastLevelController = IntPtr.Zero;
+            lastKnownLocalPlayer = IntPtr.Zero;
+            framesSinceLocalPlayerSeen = int.MaxValue;
 
             Array.Clear(pcMenuBoolOld, 0, pcMenuBoolOld.Length);
             Array.Clear(pcMenuBoolNew, 0, pcMenuBoolNew.Length);
@@ -321,8 +443,210 @@ namespace LiveSplit.PhasmophobiaAutosplitter
             shouldSplit = false;
             shouldReset = false;
             suppressResetUntilNextStart = false;
+            hadLocalPlayerLastFrame = false;
+            startGameButtonDownOld = false;
+            startGameButtonDownNew = false;
+            leaveLobbyButtonDownOld = false;
+            leaveLobbyButtonDownNew = false;
+            lastKnownLocalPlayer = IntPtr.Zero;
+            framesSinceLocalPlayerSeen = int.MaxValue;
+            loadRemovalState = LoadRemovalState.None;
+            loadRemovalSecondPauseStartUtc = DateTime.MinValue;
+            loadRemovalInLobbySinceUtc = DateTime.MinValue;
+            loadRemovalFirstLoadingSawBlack = false;
+            loadRemovalFirstLoadingNotBlackConsecutive = 0;
+            loadRemovalBoardColorConsecutiveFrames = 0;
+            loadRemovalSecondLoadingInLevelNotLoadingCount = 0;
+            loadRemovalSecondLoadingSawLoading = false;
+            vrLoadingSignalAvailable = false;
+            vrLoadScreenInstanceOld = false;
+            vrLoadScreenInstanceNew = false;
+            vrLoadingProgressOld = 0f;
+            vrLoadingProgressNew = 0f;
+            vrLoadingProgressAuxOld = 0f;
+            vrLoadingProgressAuxNew = 0f;
+            vrLoadingLikelyOld = false;
+            vrLoadingLikelyNew = false;
             logger?.Log(reason);
             return true;
+        }
+
+        public bool AreResetsBlockedByMultiContract() => false;
+
+        public bool IsLoadingScreenActive() =>
+            pointersInitialized
+            && settings != null
+            && settings.EnableLoadTimeRemoval
+            && hasSplitThisRun
+            && (loadRemovalState == LoadRemovalState.FirstLoading || loadRemovalState == LoadRemovalState.SecondLoading);
+
+        private void UpdateLoadRemovalState(IntPtr levelController, bool truckLoadedStartEdge, bool loadingActive)
+        {
+            if (settings == null || !settings.EnableLoadTimeRemoval || !hasSplitThisRun)
+            {
+                loadRemovalState = LoadRemovalState.None;
+                loadRemovalSecondPauseStartUtc = DateTime.MinValue;
+                loadRemovalInLobbySinceUtc = DateTime.MinValue;
+                loadRemovalFirstLoadingSawBlack = false;
+                loadRemovalFirstLoadingNotBlackConsecutive = 0;
+                loadRemovalBoardColorConsecutiveFrames = 0;
+                loadRemovalSecondLoadingInLevelNotLoadingCount = 0;
+                loadRemovalSecondLoadingSawLoading = false;
+                return;
+            }
+
+            if (loadRemovalState == LoadRemovalState.None)
+            {
+                loadRemovalFirstLoadingSawBlack = false;
+                loadRemovalFirstLoadingNotBlackConsecutive = 0;
+                loadRemovalInLobbySinceUtc = DateTime.MinValue;
+                loadRemovalBoardColorConsecutiveFrames = 0;
+                loadRemovalSecondLoadingInLevelNotLoadingCount = 0;
+                loadRemovalSecondLoadingSawLoading = false;
+                return;
+            }
+
+            IntPtr hWnd = IntPtr.Zero;
+            var proc = game?.Process;
+            if (proc != null && !proc.HasExited)
+                hWnd = proc.MainWindowHandle;
+
+            if (hWnd == IntPtr.Zero)
+                return;
+
+            WindowCapture.WindowCaptureFrame frame = null;
+            try
+            {
+                if (loadRemovalState == LoadRemovalState.FirstLoading || loadRemovalState == LoadRemovalState.InLobby)
+                    frame = WindowCapture.TryCaptureWindow(hWnd);
+
+                if (loadRemovalState == LoadRemovalState.FirstLoading)
+                {
+                    bool isBlack = false;
+                    if (frame != null && WindowCapture.GetClientRectScreen(hWnd, out _, out _, out int cw, out int ch))
+                        isBlack = WindowCapture.IsTopRightRegionBlack(frame, cw, ch, 1);
+                    if (isBlack)
+                    {
+                        loadRemovalFirstLoadingSawBlack = true;
+                        loadRemovalFirstLoadingNotBlackConsecutive = 0;
+                    }
+                    else
+                    {
+                        loadRemovalFirstLoadingNotBlackConsecutive++;
+                        bool canUnpause = (loadRemovalFirstLoadingSawBlack && loadRemovalFirstLoadingNotBlackConsecutive >= 1)
+                            || loadRemovalFirstLoadingNotBlackConsecutive >= 5;
+                        if (canUnpause)
+                        {
+                            loadRemovalState = LoadRemovalState.InLobby;
+                            loadRemovalInLobbySinceUtc = DateTime.UtcNow;
+                            loadRemovalFirstLoadingSawBlack = false;
+                            loadRemovalFirstLoadingNotBlackConsecutive = 0;
+                            logger?.Log("Load removal: loading done → lobby");
+                        }
+                    }
+                }
+                else if (loadRemovalState == LoadRemovalState.InLobby)
+                {
+                    if (loadRemovalInLobbySinceUtc == DateTime.MinValue)
+                        loadRemovalInLobbySinceUtc = DateTime.UtcNow;
+                    bool inLobbyLongEnough = (DateTime.UtcNow - loadRemovalInLobbySinceUtc) >= TimeSpan.FromSeconds(0.5);
+                    bool blackAtSecondLoadPixel = false;
+                    if (inLobbyLongEnough && frame != null && WindowCapture.GetClientRectScreen(hWnd, out _, out _, out int clientW, out int clientH))
+                    {
+                        int px = (PinRefX * clientW) / PinRefWidth;
+                        int py = (PinRefY * clientH) / PinRefHeight;
+                        blackAtSecondLoadPixel = WindowCapture.IsPixelBlack(frame, px, py, 1);
+                        if (blackAtSecondLoadPixel)
+                            loadRemovalBoardColorConsecutiveFrames++;
+                        else
+                            loadRemovalBoardColorConsecutiveFrames = 0;
+                    }
+                    else
+                        loadRemovalBoardColorConsecutiveFrames = 0;
+                    if (loadRemovalBoardColorConsecutiveFrames >= 5)
+                    {
+                        loadRemovalState = LoadRemovalState.SecondLoading;
+                        loadRemovalSecondPauseStartUtc = DateTime.UtcNow;
+                        loadRemovalInLobbySinceUtc = DateTime.MinValue;
+                        loadRemovalBoardColorConsecutiveFrames = 0;
+                        loadRemovalSecondLoadingInLevelNotLoadingCount = 0;
+                        loadRemovalSecondLoadingSawLoading = false;
+                        logger?.Log("Load removal: contract board → pausing for load");
+                    }
+                }
+                else if (loadRemovalState == LoadRemovalState.SecondLoading)
+                {
+                    if (loadingActive)
+                        loadRemovalSecondLoadingSawLoading = true;
+                    bool inLevel = levelController != IntPtr.Zero;
+                    bool notLoading = !loadingActive;
+                    if (inLevel && notLoading)
+                        loadRemovalSecondLoadingInLevelNotLoadingCount++;
+                    else
+                        loadRemovalSecondLoadingInLevelNotLoadingCount = 0;
+                    var inSecondLoadingDuration = loadRemovalSecondPauseStartUtc != DateTime.MinValue
+                        ? (DateTime.UtcNow - loadRemovalSecondPauseStartUtc) : TimeSpan.Zero;
+                    bool minPauseElapsed = inSecondLoadingDuration >= TimeSpan.FromSeconds(1.0);
+                    bool fallbackUnpauseOk = loadRemovalSecondLoadingInLevelNotLoadingCount >= 3
+                        && (minPauseElapsed && (loadRemovalSecondLoadingSawLoading || inSecondLoadingDuration >= TimeSpan.FromSeconds(2.0)));
+                    bool canUnpause = truckLoadedStartEdge || fallbackUnpauseOk;
+                    if (levelController != IntPtr.Zero && canUnpause)
+                    {
+                        loadRemovalState = LoadRemovalState.None;
+                        loadRemovalSecondPauseStartUtc = DateTime.MinValue;
+                        loadRemovalSecondLoadingInLevelNotLoadingCount = 0;
+                        loadRemovalSecondLoadingSawLoading = false;
+                        logger?.Log("Load removal: contract started → unpause");
+                    }
+                    else if (loadRemovalSecondPauseStartUtc != DateTime.MinValue
+                        && (DateTime.UtcNow - loadRemovalSecondPauseStartUtc) >= LoadRemovalSecondPauseTimeout)
+                    {
+                        loadRemovalState = LoadRemovalState.None;
+                        loadRemovalSecondPauseStartUtc = DateTime.MinValue;
+                        loadRemovalSecondLoadingInLevelNotLoadingCount = 0;
+                        loadRemovalSecondLoadingSawLoading = false;
+                        logger?.Log("Load removal: timeout → unpause");
+                    }
+                }
+
+            }
+            catch (Exception ex)
+            {
+                logger?.Log("Load removal: pixel check error — " + ex.Message);
+            }
+            finally
+            {
+                WindowCapture.ReleaseCapture(frame);
+            }
+        }
+
+        private bool IsVrLoadingLikelyActive()
+        {
+            if (!vrLoadingSignalAvailable || !vrLoadScreenInstanceNew)
+                return false;
+
+            float progressDelta = Math.Abs(vrLoadingProgressNew - vrLoadingProgressOld);
+            float auxDelta = Math.Abs(vrLoadingProgressAuxNew - vrLoadingProgressAuxOld);
+            bool hasProgressValue = vrLoadingProgressNew > 0.0005f || vrLoadingProgressAuxNew > 0.0005f;
+            bool hasProgressMotion = progressDelta > 0.0005f || auxDelta > 0.0005f;
+            return hasProgressValue || hasProgressMotion;
+        }
+
+        private bool HasControlStateEdge()
+        {
+            for (int i = 0; i < PlayerBoolOffsets.Length; i++)
+            {
+                if (playerBoolOld[i] != playerBoolNew[i])
+                    return true;
+            }
+
+            for (int i = 0; i < FirstPersonBoolOffsets.Length; i++)
+            {
+                if (firstPersonBoolOld[i] != firstPersonBoolNew[i])
+                    return true;
+            }
+
+            return false;
         }
 
         private bool HasUnfreezeEdge()
@@ -369,6 +693,14 @@ namespace LiveSplit.PhasmophobiaAutosplitter
 
             try
             {
+                bool wasInitialized = pointersInitialized;
+                IntPtr oldLevelAddress = levelControllerStaticAddress;
+                IntPtr oldMapAddress = mapControllerStaticAddress;
+                IntPtr oldCctvAddress = cctvControllerStaticAddress;
+                IntPtr oldLoadingAddress = loadingControllerStaticAddress;
+                IntPtr oldMainManagerAddress = mainManagerStaticAddress;
+                IntPtr oldLevelValuesAddress = levelValuesStaticAddress;
+
                 IntPtr gameAssemblyBase = GetGameAssemblyBaseAddress();
                 if (gameAssemblyBase == IntPtr.Zero)
                     return;
@@ -377,18 +709,32 @@ namespace LiveSplit.PhasmophobiaAutosplitter
                 mapControllerStaticAddress = ResolveSingletonPointerAddress(gameAssemblyBase, MapControllerTypeInfoRva, "MapController");
                 cctvControllerStaticAddress = ResolveSingletonPointerAddress(gameAssemblyBase, CCTVControllerTypeInfoRva, "CCTVController");
                 loadingControllerStaticAddress = ResolveSingletonPointerAddress(gameAssemblyBase, LoadingControllerTypeInfoRva, "LoadingController");
+                // Optional pointer; do not spam logs if unavailable in current game context.
+                mainManagerStaticAddress = ResolveSingletonPointerAddress(gameAssemblyBase, MainManagerTypeInfoRva, "MainManager", logNulls: false);
+                // Optional pointer used only for debug map name text.
+                levelValuesStaticAddress = ResolveSingletonPointerAddress(gameAssemblyBase, LevelValuesTypeInfoRva, "LevelValues", logNulls: false);
 
                 // Level and map pointers are required; others are optional.
                 pointersInitialized = levelControllerStaticAddress != IntPtr.Zero
                                    && mapControllerStaticAddress != IntPtr.Zero;
 
-                if (pointersInitialized)
+                bool pointerSetChanged =
+                    oldLevelAddress != levelControllerStaticAddress
+                    || oldMapAddress != mapControllerStaticAddress
+                    || oldCctvAddress != cctvControllerStaticAddress
+                    || oldLoadingAddress != loadingControllerStaticAddress
+                    || oldMainManagerAddress != mainManagerStaticAddress
+                    || oldLevelValuesAddress != levelValuesStaticAddress;
+
+                if (pointersInitialized && (!wasInitialized || pointerSetChanged))
                 {
                     logger?.Log("Pointers initialized (TypeInfo RVAs)");
                     logger?.Log("  LevelController singleton ptr addr: 0x" + levelControllerStaticAddress.ToString("X"));
                     logger?.Log("  MapController singleton ptr addr:   0x" + mapControllerStaticAddress.ToString("X"));
                     logger?.Log("  CCTVController singleton ptr addr:  0x" + cctvControllerStaticAddress.ToString("X"));
                     logger?.Log("  LoadingController singleton ptr addr: 0x" + loadingControllerStaticAddress.ToString("X"));
+                    logger?.Log("  MainManager singleton ptr addr: 0x" + mainManagerStaticAddress.ToString("X"));
+                    logger?.Log("  LevelValues singleton ptr addr: 0x" + levelValuesStaticAddress.ToString("X"));
                 }
             }
             catch (Exception ex)
@@ -411,20 +757,22 @@ namespace LiveSplit.PhasmophobiaAutosplitter
             return module.BaseAddress;
         }
 
-        private IntPtr ResolveSingletonPointerAddress(IntPtr gameAssemblyBase, int typeInfoRva, string label)
+        private IntPtr ResolveSingletonPointerAddress(IntPtr gameAssemblyBase, int typeInfoRva, string label, bool logNulls = true)
         {
             IntPtr typeInfoAddress = gameAssemblyBase + typeInfoRva;
             IntPtr klass = game.Read<IntPtr>(typeInfoAddress);
             if (klass == IntPtr.Zero)
             {
-                logger?.Log(label + " class pointer is null at 0x" + typeInfoAddress.ToString("X"));
+                if (logNulls)
+                    logger?.Log(label + " class pointer is null at 0x" + typeInfoAddress.ToString("X"));
                 return IntPtr.Zero;
             }
 
             IntPtr staticFields = game.Read<IntPtr>(klass + Il2CppClassStaticFieldsOffset);
             if (staticFields == IntPtr.Zero)
             {
-                logger?.Log(label + " static fields pointer is null");
+                if (logNulls)
+                    logger?.Log(label + " static fields pointer is null");
                 return IntPtr.Zero;
             }
 
@@ -436,6 +784,14 @@ namespace LiveSplit.PhasmophobiaAutosplitter
             if (staticAddress == IntPtr.Zero || game == null)
                 return IntPtr.Zero;
             return game.Read<IntPtr>(staticAddress);
+        }
+
+        private bool ReadSelectablePointerDown(IntPtr selectablePointer)
+        {
+            if (selectablePointer == IntPtr.Zero || game == null)
+                return false;
+
+            return game.Read<bool>(selectablePointer + SelectableIsPointerDownOffset);
         }
 
         private IntPtr ReadLocalPlayerFromList(IntPtr listPointer)
@@ -687,6 +1043,7 @@ namespace LiveSplit.PhasmophobiaAutosplitter
             IntPtr mapController = ReadSingletonInstance(mapControllerStaticAddress);
             IntPtr cctvController = ReadSingletonInstance(cctvControllerStaticAddress);
             IntPtr loadingController = ReadSingletonInstance(loadingControllerStaticAddress);
+            bool wasInContract = lastLevelController != IntPtr.Zero;
             bool levelLoadedNow = lastLevelController == IntPtr.Zero && levelController != IntPtr.Zero;
 
             IntPtr keyPointer = IntPtr.Zero;
@@ -734,6 +1091,19 @@ namespace LiveSplit.PhasmophobiaAutosplitter
                 cctvPlayersList = game.Read<IntPtr>(cctvController + CctvTruckPlayersListOffset); // CCTVController.player list (truck context)
             }
 
+            if (localPlayer != IntPtr.Zero)
+            {
+                lastKnownLocalPlayer = localPlayer;
+                framesSinceLocalPlayerSeen = 0;
+            }
+            else
+            {
+                if (framesSinceLocalPlayerSeen < int.MaxValue - 1)
+                    framesSinceLocalPlayerSeen++;
+                if (framesSinceLocalPlayerSeen > 600)
+                    lastKnownLocalPlayer = IntPtr.Zero;
+            }
+
             if (localPlayer == IntPtr.Zero)
             {
                 playerSignalPrimed = false;
@@ -749,12 +1119,72 @@ namespace LiveSplit.PhasmophobiaAutosplitter
                 UpdatePlayerSignals(localPlayer);
             }
 
+            vrLoadScreenInstanceOld = vrLoadScreenInstanceNew;
+            vrLoadingProgressOld = vrLoadingProgressNew;
+            vrLoadingProgressAuxOld = vrLoadingProgressAuxNew;
+            vrLoadingSignalAvailable = false;
+            vrLoadScreenInstanceNew = false;
+            vrLoadingProgressNew = 0f;
+            vrLoadingProgressAuxNew = 0f;
+            IntPtr localPlayerForVrLoading = localPlayer != IntPtr.Zero ? localPlayer : lastKnownLocalPlayer;
+            if (localPlayerForVrLoading != IntPtr.Zero)
+            {
+                IntPtr vrLoading = game.Read<IntPtr>(localPlayerForVrLoading + PlayerVrLoadingOffset); // Player.vrLoading
+                if (vrLoading != IntPtr.Zero)
+                {
+                    vrLoadingSignalAvailable = true;
+                    vrLoadScreenInstanceNew = game.Read<bool>(vrLoading + VrLoadingIsLoadScreenInstanceOffset);
+                    vrLoadingProgressNew = game.Read<float>(vrLoading + VrLoadingProgressOffset);
+                    vrLoadingProgressAuxNew = game.Read<float>(vrLoading + VrLoadingProgressAuxOffset);
+                }
+            }
+            vrLoadingLikelyOld = vrLoadingLikelyNew;
+            vrLoadingLikelyNew = IsVrLoadingLikelyActive();
+            if (vrLoadScreenInstanceOld != vrLoadScreenInstanceNew)
+            {
+                logger?.Log("VRLoading instance edge (" + vrLoadScreenInstanceOld + " -> " + vrLoadScreenInstanceNew + ")");
+            }
+            if (vrLoadingLikelyOld != vrLoadingLikelyNew)
+            {
+                logger?.Log("VRLoading candidate edge (" + vrLoadingLikelyOld + " -> " + vrLoadingLikelyNew + ")"
+                    + " instance=" + vrLoadScreenInstanceNew
+                    + " progress=" + vrLoadingProgressNew.ToString("0.000")
+                    + " aux=" + vrLoadingProgressAuxNew.ToString("0.000"));
+            }
+
             loadingFlagOld = loadingFlagNew;
             loadingFlagNew = false;
             loadingSignalAvailable = loadingController != IntPtr.Zero;
             if (loadingSignalAvailable)
             {
                 loadingFlagNew = game.Read<bool>(loadingController + 0x30); // LoadingController loading flag candidate
+            }
+
+            startGameButtonDownOld = startGameButtonDownNew;
+            leaveLobbyButtonDownOld = leaveLobbyButtonDownNew;
+            startGameButtonDownNew = false;
+            leaveLobbyButtonDownNew = false;
+            IntPtr mainManager = ReadSingletonInstance(mainManagerStaticAddress);
+            if (mainManager != IntPtr.Zero)
+            {
+                IntPtr serverManager = game.Read<IntPtr>(mainManager + MainManagerServerManagerOffset);
+                if (serverManager != IntPtr.Zero)
+                {
+                    IntPtr leaveButton = game.Read<IntPtr>(serverManager + ServerManagerLeaveButtonOffset);
+                    IntPtr startButton = game.Read<IntPtr>(serverManager + ServerManagerStartGameButtonOffset);
+                    leaveLobbyButtonDownNew = ReadSelectablePointerDown(leaveButton);
+                    startGameButtonDownNew = ReadSelectablePointerDown(startButton);
+                }
+            }
+            if (startGameButtonDownOld != startGameButtonDownNew)
+            {
+                logger?.Log("Lobby Start button edge ("
+                    + startGameButtonDownOld + " -> " + startGameButtonDownNew + ")");
+            }
+            if (leaveLobbyButtonDownOld != leaveLobbyButtonDownNew)
+            {
+                logger?.Log("Lobby Leave button edge ("
+                    + leaveLobbyButtonDownOld + " -> " + leaveLobbyButtonDownNew + ")");
             }
 
             exitLevelFlagOld = exitLevelFlagNew;
@@ -855,10 +1285,22 @@ namespace LiveSplit.PhasmophobiaAutosplitter
             bool loadingEdgeStarted = loadingFlagNew && !loadingFlagOld;
             bool loadingEdgeFinished = !loadingFlagNew && loadingFlagOld;
             bool resetWhenAtLobby = settings != null && settings.ResetWhenAtLobby;
+            bool useMultiContract = settings != null && settings.EnableMultiContract;
+            bool localPlayerLikelyPresent = localPlayer != IntPtr.Zero || lastKnownLocalPlayer != IntPtr.Zero;
+            bool vrLoadingLikelyActive = vrLoadingLikelyNew;
+            bool vrLoadingVisualActive = vrLoadScreenInstanceNew || vrLoadingLikelyActive;
+            bool inLobbyNow = levelController == IntPtr.Zero;
+            bool cctvTruckFlagOld = cctvTruckBoolOld.Length > 0 && cctvTruckBoolOld[0];
+            bool cctvTruckFlagNew = cctvTruckBoolNew.Length > 0 && cctvTruckBoolNew[0];
+            bool cctvTruckFadeOld = cctvTruckBoolOld.Length > 2 && cctvTruckBoolOld[2];
+            bool cctvTruckFadeNew = cctvTruckBoolNew.Length > 2 && cctvTruckBoolNew[2];
+
+            UpdateLoadRemovalState(levelController, truckLoadedStartEdge, loadingFlagNew || vrLoadingVisualActive);
 
             if (startedTimerBefore
                 && !shouldSplit
                 && sawTruckKeySinceStart
+                && wasInContract
                 && levelController != IntPtr.Zero
                 && loadingEdgeStarted)
             {
@@ -876,7 +1318,7 @@ namespace LiveSplit.PhasmophobiaAutosplitter
 
                 // Use the truck exit trigger containing the local player as the authoritative
                 // end signal. The unload bool can be missing/late on some runs.
-                bool hasStrictTruckUnloadSignal = hasTruckTriggerSignal;
+                bool hasStrictTruckUnloadSignal = hasTruckTriggerSignal || hasTruckUnloadStateSignal;
                 bool shouldEndForTruckLeave =
                     (settings == null || settings.EndOnTruckUnload)
                     && hasStrictTruckUnloadSignal;
@@ -886,7 +1328,7 @@ namespace LiveSplit.PhasmophobiaAutosplitter
                 bool menuDrivenTransition =
                     pauseMenuLikelyOld
                     || pauseMenuLikelyNew
-                    || pauseMenuLikelyFramesAgo <= 120;
+                    || pauseMenuLikelyFramesAgo <= PauseMenuRecentFrames;
                 bool fallbackTruckLeaveSignal =
                     (settings == null || settings.EndOnTruckUnload)
                     && cctvTruckPresenceNow
@@ -898,8 +1340,8 @@ namespace LiveSplit.PhasmophobiaAutosplitter
                     shouldSplit = true;
                     pendingResetAfterNonEndLeave = false;
                     logger?.Log(shouldEndForTruckLeave
-                        ? "End candidate: truck unload signal confirmed"
-                        : "End candidate fallback: CCTV truck presence");
+                        ? "Split candidate: truck unload signal confirmed"
+                        : "Split candidate fallback: CCTV truck presence");
                 }
                 else
                 {
@@ -956,12 +1398,14 @@ namespace LiveSplit.PhasmophobiaAutosplitter
              && !shouldSplit
              && !suppressResetUntilNextStart
              && resetWhenAtLobby
+             && !(useMultiContract && hasSplitThisRun)
              && lobbyStableFrameCount >= LobbyStableFramesRequired)
             {
                 shouldReset = true;
                 pendingResetAfterNonEndLeave = false;
             }
 
+            hadLocalPlayerLastFrame = localPlayerLikelyPresent;
             lastLevelController = levelController;
         }
 

@@ -75,17 +75,51 @@ namespace Voxif.AutoSplitter {
 
             if (canEvaluateRunState)
             {
-                timer.CurrentState.IsGameTimePaused = Loading();
-
                 if (Reset())
                 {
-                    timer.Reset();
-                    logger?.Log("Reset");
+                    bool warnForGoldSplit = settings != null
+                        && settings.WarnOnResetIfGold
+                        && AttemptHasGoldSplit();
+                    logger?.Log("Reset prompt mode: warnForGoldSplit=" + warnForGoldSplit);
+
+                    bool doReset = true;
+                    bool updateSplits = true;
+                    if (warnForGoldSplit)
+                    {
+                        DialogResult result;
+                        result = MessageBox.Show(
+                            "This attempt has at least one gold split.\n\nYes: Reset and update splits\nNo: Reset without updating splits\nCancel: Don't reset",
+                            "Warn on Reset if Gold",
+                            MessageBoxButtons.YesNoCancel,
+                            MessageBoxIcon.Warning,
+                            MessageBoxDefaultButton.Button3,
+                            MessageBoxOptions.DefaultDesktopOnly);
+
+                        if (result == DialogResult.Cancel)
+                        {
+                            doReset = false;
+                            logger?.Log("Reset canceled from gold warning prompt");
+                        }
+                        else if (result == DialogResult.No)
+                        {
+                            updateSplits = false;
+                        }
+                    }
+
+                    if (doReset)
+                    {
+                        timer.Reset(updateSplits);
+                        logger?.Log("Reset");
+                    }
                 }
                 else if (timer.CurrentState.CurrentSplitIndex >= 0 && Split())
                 {
                     timer.Split();
                 }
+
+                // Apply loading pause after reset/split evaluation so load-removal arming
+                // done in this same tick takes effect immediately.
+                timer.CurrentState.IsGameTimePaused = Loading();
             }
 
             if(timer.CurrentState.CurrentSplitIndex < 0) {
@@ -102,6 +136,35 @@ namespace Voxif.AutoSplitter {
         public virtual bool Reset() => false;
         public virtual bool Loading() => false;
         public virtual TimeSpan? GameTime() => null;
+
+        private bool AttemptHasGoldSplit()
+        {
+            if (timer?.CurrentState?.Run == null)
+                return false;
+
+            var timingMethod = timer.CurrentState.CurrentTimingMethod;
+            TimeSpan? previousSplitTime = TimeSpan.Zero;
+
+            foreach (ISegment segment in timer.CurrentState.Run)
+            {
+                TimeSpan? splitTime = segment.SplitTime[timingMethod];
+                if (!splitTime.HasValue)
+                    break;
+
+                if (!previousSplitTime.HasValue)
+                    previousSplitTime = TimeSpan.Zero;
+
+                TimeSpan segmentTime = splitTime.Value - previousSplitTime.Value;
+                TimeSpan? bestSegment = segment.BestSegmentTime[timingMethod];
+
+                if (bestSegment.HasValue && segmentTime < bestSegment.Value)
+                    return true;
+
+                previousSplitTime = splitTime.Value;
+            }
+
+            return false;
+        }
 
         private void OnStart(object sender, EventArgs e) {
             if(GameTimeType == EGameTime.Loading) {

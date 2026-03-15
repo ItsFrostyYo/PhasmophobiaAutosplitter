@@ -1,19 +1,11 @@
-﻿<?xml version="1.0" encoding="utf-8" ?>
+<?xml version="1.0" encoding="utf-8" ?>
 <updates>
-    <update version="1.0.2.2">
+    <update version="1.0.1.0">
         <files>
             <file path="Components/LiveSplit.PhasmophobiaAutosplitter.dll" status="changed"/>
         </files>
         <changelog>
-            <change>Settings UI cleanup: removed visible first-movement backup checkbox and reflowed reset checkbox text to fit on two lines.</change>
-        </changelog>
-    </update>
-    <update version="1.0.2.1">
-        <files>
-            <file path="Components/LiveSplit.PhasmophobiaAutosplitter.dll" status="changed"/>
-        </files>
-        <changelog>
-            <change>Settings UI refresh (new labels/tooltips/known-issues panel), reset master toggle now controls all reset paths, and paused/ended restart detection hardened.</change>
+            <change>First release with Start, End, and Reset options.</change>
         </changelog>
     </update>
     <update version="1.0.2.0">
@@ -21,71 +13,15 @@
             <file path="Components/LiveSplit.PhasmophobiaAutosplitter.dll" status="changed"/>
         </files>
         <changelog>
-            <change>Paused/ended timers now auto reset + start on detected new-run start signal; versioning normalized to 1.0.2.0.</change>
+            <change>Settings UI refresh, reset master toggle, paused/ended restart detection. Multi-Contract and Load Removal option (pointer-based).</change>
         </changelog>
     </update>
-    <update version="1.0.1.42">
+    <update version="1.0.3.0">
         <files>
             <file path="Components/LiveSplit.PhasmophobiaAutosplitter.dll" status="changed"/>
         </files>
         <changelog>
-            <change>Fallback end now requires truck-presence drop+return cycle; improved restart-loop signal for paused/ended timer states.</change>
-        </changelog>
-    </update>
-    <update version="1.0.1.41">
-        <files>
-            <file path="Components/LiveSplit.PhasmophobiaAutosplitter.dll" status="changed"/>
-        </files>
-        <changelog>
-            <change>Narrow end fallback to CCTV truck-presence (0xA0), add pause-menu recency suppression, and harden auto-restart guards.</change>
-        </changelog>
-    </update>
-    <update version="1.0.1.40">
-        <files>
-            <file path="Components/LiveSplit.PhasmophobiaAutosplitter.dll" status="changed"/>
-        </files>
-        <changelog>
-            <change>Truck-end fallback now uses CCTV truck-state booleans; pause-leave check tightened to reduce journal false positives.</change>
-        </changelog>
-    </update>
-    <update version="1.0.1.39">
-        <files>
-            <file path="Components/LiveSplit.PhasmophobiaAutosplitter.dll" status="changed"/>
-        </files>
-        <changelog>
-            <change>End fallback now uses local player truck-list presence from CCTVController instead of non-menu transition.</change>
-        </changelog>
-    </update>
-    <update version="1.0.1.38">
-        <files>
-            <file path="Components/LiveSplit.PhasmophobiaAutosplitter.dll" status="changed"/>
-        </files>
-        <changelog>
-            <change>Deterministic end/reset fallback: non-menu load transitions split, menu-driven transitions reset.</change>
-        </changelog>
-    </update>
-    <update version="1.0.1.37">
-        <files>
-            <file path="Components/LiveSplit.PhasmophobiaAutosplitter.dll" status="changed"/>
-        </files>
-        <changelog>
-            <change>Improve truck-end detection by accepting truck trigger occupancy and widening list parsing bounds.</change>
-        </changelog>
-    </update>
-    <update version="1.0.1.36">
-        <files>
-            <file path="Components/LiveSplit.PhasmophobiaAutosplitter.dll" status="changed"/>
-        </files>
-        <changelog>
-            <change>Fix auto-restart reset/start loop and improve truck-end detection using local player trigger ownership.</change>
-        </changelog>
-    </update>
-    <update version="1.0.1.27">
-        <files>
-            <file path="Components/LiveSplit.PhasmophobiaAutosplitter.dll" status="changed"/>
-        </files>
-        <changelog>
-            <change>First Real Release with Start, End, and Reset options</change>
+            <change>Pixel-based load removal (black screen and contract-board pin), Updated Options tab. All resets use Warn on Reset if Gold when enabled.</change>
         </changelog>
     </update>
 </updates>

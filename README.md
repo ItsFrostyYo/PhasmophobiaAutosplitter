@@ -1,47 +1,46 @@
-﻿# LiveSplit.PhasmophobiaAutosplitter
-This LiveSplit Auto Splitter provides automatic start, end split, and reset for Phasmophobia by tracking in-game memory values.
+# LiveSplit Phasmophobia Autosplitter
 
-## Features (Tied to SRC Ruling)
-- Automatic run start on truck load
-- Automatic end split when leaving at contract end from truck context
-- Optional reset on contract leave
-- Automatic reset when the game process closes
-- Restart loop handling (auto reset + restart when a new run start is detected while timer is running, paused, or ended)
+Automatic start, split, reset, and optional load removal for Phasmophobia. Tracks the game via memory for start/split/reset; load removal uses pixel detection.
 
-## Supported Game Versions
-- Current Steam build (Unity 2022.3.40f1 / IL2CPP)
+## Features
+- **Start** when the contract is ready and you can move (truck loaded).
+- **Split** when you finish a contract and leave from the truck.
+- **Reset** when you leave a contract without finishing, when the game closes, or when a new run starts (configurable).
+- **Multi-Contract** – chain multiple contracts in one run without resetting.
+- **Load removal** – with Game Time, loading screens after a split are removed from the timer. Uses **pixel detection** (not memory), so it can be less consistent than start/split/reset; resolution and UI changes may affect it.
 
-Other game versions may work as well or partially.
+## Supported game
+- Current Steam build (Unity 2022.3.40f1 / IL2CPP). Other versions may work partially.
 
 ## How to use
 1. Open LiveSplit.
-2. Right-click -> Edit Splits.
-3. Set *Game Name* to Phasmophobia.
-4. Activate the Auto Splitter.
-5. Open Settings and configure start/end/reset options.
+2. Right-click → Edit Splits.
+3. Set **Game Name** to **Phasmophobia**.
+4. Turn on the Auto Splitter.
+5. Open the component settings and set start/split/reset and options as you like.
 
-# Settings
+## Settings
 
-### Start
-- Start on Contract Initialization - Starts the timer when the player and truck are completely finished initalizing and the player is allowed to move.
-(Backup trigger is always on: if contract initialization start is missed, timer starts when the player first moves.)
-### End
-- End on Contract Finish - Splits when a loading transition is triggered when you are inside the truck.
-### Reset
-- Allow Resetting on Contract Leave, Game Close and New Run Start - Enables all auto-reset behavior:
-resets when a loading transition is triggered when you are not inside the truck,
-resets on game close, and auto reset+start when a new run start is detected while the timer is running, paused, or ended.
-(If you never leave the truck it will also count as a Reset)
+**Start**
+- Start on Contract Initialization – starts when the truck is loaded and you can move. A first-movement backup is used if that is missed.
 
-## Options
-- More Options might be added here in future updates. (Like Full Game Load Removal)
+**Split**
+- Split on Contract Finish – splits when you trigger the contract-finish loading from inside the truck.
 
-# Known Issues
-- Leaving truck then re-entering can treat a normal leave loading transition as a split/end.
-- Multiplayer may be unreliable.
-- Game updates can break memory signatures until the autosplitter is updated.
-- Restarting the game may rarely break the autosplitter.
-If this happens, restart LiveSplit or reload the component.
+**Reset**
+- Allow Resetting on Contract Leave, Game Close and New Run Start – when on, the timer resets when you leave without finishing, when the game closes, or when a new run is detected. When off, all of that is disabled.
 
-# Contributing
-Bug reports and code improvements are welcome.
+**Options**
+- **Multi-Contract** – lets you do several maps in one run without resetting after every finished contract.
+- **Load Time Removal (Game Time)** – pauses Game Time during loading after a split. **Note:** this uses pixel detection, not memory, so it may not be as consistent as start/split/reset and can depend on resolution and possibly UI settings, attempts to scale with monitor.
+- **Warn on Reset if Gold** – uses LiveSplit’s reset confirmation when the current attempt has at least one gold split. Applies to every reset.
+
+## Known issues
+- Load Time Removal uses pixel detection, not memory, so it may not be as consistent as start/split/reset and can depend on resolution and possibly UI settings, attempts to scale with monitor.
+- Leaving the truck and re-entering WILL be treated as a split.
+- Multiplayer can break memory, be unreliable, resulting in Double Splits, never unpause timer and possible never split.
+- Game updates can break memory or pixel detection until the autosplitter is updated.
+- Restarting the game can rarely break detection; restart LiveSplit or reload the component if that happens.
+
+## Contributing
+Bug reports and improvements are welcome.

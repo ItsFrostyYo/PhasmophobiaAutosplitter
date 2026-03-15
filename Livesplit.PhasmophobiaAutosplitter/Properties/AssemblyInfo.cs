@@ -1,4 +1,4 @@
-﻿using LiveSplit.PhasmophobiaAutosplitter;
+using LiveSplit.PhasmophobiaAutosplitter;
 using LiveSplit.UI.Components;
 
 using System.Reflection;
@@ -33,8 +33,8 @@ using System.Runtime.InteropServices;
 //      Build Number
 //      Revision
 //
-[assembly: AssemblyVersion("1.0.2.2")]
-[assembly: AssemblyFileVersion("1.0.2.2")]
+[assembly: AssemblyVersion("1.0.3.0")]
+[assembly: AssemblyFileVersion("1.0.3.0")]
 
 [assembly: ComponentFactory(typeof(Factory))]
 
