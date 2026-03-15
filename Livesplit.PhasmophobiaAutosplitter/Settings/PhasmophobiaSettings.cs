@@ -266,13 +266,11 @@ namespace LiveSplit.PhasmophobiaAutosplitter
             {
                 AutoSize = false,
                 Dock = DockStyle.Fill,
-                Text = "- Leaving truck then re-entering can treat a normal leave\n"
-                     + "  loading transition as a split.\n"
-                     + "- Multiplayer may be unreliable.\n"
-                     + "- Game updates can break memory signatures until the\n"
-                     + "  autosplitter is updated.\n"
-                     + "- Restarting the game may rarely break the autosplitter.\n"
-                     + "  If this happens, restart LiveSplit or reload the component.",
+                Text = "- Load Time Removal uses pixel detection, not memory, so it may not be as consistent as start/split/reset and can depend on resolution and possibly UI settings, attempts to scale with monitor.\n"
+                     + "- Leaving the truck and re-entering WILL be treated as a split.\n"
+                     + "- Multiplayer can break memory, be unreliable, resulting in Double Splits, never unpause timer and possible never split.\n"
+                     + "- Game updates can break memory or pixel detection until the autosplitter is updated.\n"
+                     + "- Restarting the game can rarely break detection; restart LiveSplit or reload the component if that happens.",
                 Margin = new Padding(0),
                 TextAlign = ContentAlignment.TopLeft
             };
