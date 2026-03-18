@@ -5,11 +5,11 @@
   <PropertyGroup>
     <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
     <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
-    <ProjectGuid>{2C1210E7-0CE3-450E-95CE-27026BCDE375}</ProjectGuid>
+    <ProjectGuid>{3F433B9B-C600-4D4A-8133-5A354DBD9730}</ProjectGuid>
     <OutputType>Library</OutputType>
     <AppDesignerFolder>Properties</AppDesignerFolder>
-    <RootNamespace>LiveSplit.PhasmophobiaAutosplitter</RootNamespace>
-    <AssemblyName>LiveSplit.PhasmophobiaAutosplitter</AssemblyName>
+    <RootNamespace>LiveSplit.PhasmophobiaContractResolver</RootNamespace>
+    <AssemblyName>LiveSplit.PhasmophobiaContractResolver</AssemblyName>
     <TargetFrameworkVersion>v4.8.1</TargetFrameworkVersion>
     <FileAlignment>512</FileAlignment>
     <Deterministic>true</Deterministic>
@@ -21,7 +21,7 @@
     <DebugType>full</DebugType>
     <Optimize>false</Optimize>
     <OutputPath>bin\Debug\</OutputPath>
-    <DefineConstants>TRACE;DEBUG;LOG</DefineConstants>
+    <DefineConstants>TRACE;DEBUG</DefineConstants>
     <ErrorReport>prompt</ErrorReport>
     <WarningLevel>4</WarningLevel>
   </PropertyGroup>
@@ -37,10 +37,10 @@
 
   <ItemGroup>
     <Reference Include="LiveSplit.Core">
-      <HintPath>..\..\..\..\LiveSplit\LiveSplit_1.8.37\LiveSplit.Core.dll</HintPath>
+      <HintPath>..\..\..\LiveSplit\LiveSplit_1.8.37\LiveSplit.Core.dll</HintPath>
     </Reference>
     <Reference Include="UpdateManager">
-      <HintPath>..\..\..\..\LiveSplit\LiveSplit_1.8.37\UpdateManager.dll</HintPath>
+      <HintPath>..\..\..\LiveSplit\LiveSplit_1.8.37\UpdateManager.dll</HintPath>
     </Reference>
     <Reference Include="System" />
     <Reference Include="System.Core" />
@@ -50,27 +50,13 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Compile Include="GameData\PhasmophobiaCatalog.cs" />
-    <Compile Include="PhasmophobiaComponent.cs" />
-    <Compile Include="PhasmophobiaMemory.cs" />
-    <Compile Include="WindowCapture.cs" />
-    <Compile Include="Settings\PhasmophobiaSettings.cs">
+    <Compile Include="ContractResolverComponent.cs" />
+    <Compile Include="ContractResolverFactory.cs" />
+    <Compile Include="ContractResolverMemory.cs" />
+    <Compile Include="ContractResolverSettings.cs">
       <SubType>UserControl</SubType>
     </Compile>
     <Compile Include="Properties\AssemblyInfo.cs" />
-
-    <Compile Include="Voxif.AutoSplitter\**\*.cs" />
-    <Compile Include="Voxif.Helpers\**\*.cs" />
-    <Compile Include="Voxif.IO\**\*.cs" />
-    <Compile Include="Voxif.Memory\**\*.cs" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <EmbeddedResource Include="Voxif.Helpers\Voxif.Helpers.Unity\Il2cpp_2019.txt" />
-    <EmbeddedResource Include="Voxif.Helpers\Voxif.Helpers.Unity\Il2cpp_Base.txt" />
-    <EmbeddedResource Include="Voxif.Helpers\Voxif.Helpers.Unity\Mono_v1.txt" />
-    <EmbeddedResource Include="Voxif.Helpers\Voxif.Helpers.Unity\Mono_v1_cattrs.txt" />
-    <EmbeddedResource Include="Voxif.Helpers\Voxif.Helpers.Unity\Mono_v2.txt" />
   </ItemGroup>
 
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />

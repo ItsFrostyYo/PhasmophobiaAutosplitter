@@ -7,6 +7,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Livesplit.PhasmophobiaAutos
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PhasmoResetter", "PhasmoResetter\PhasmoResetter.csproj", "{A1B2C3D4-E5F6-7890-ABCD-EF1234567890}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Livesplit.PhasmophobiaContractResolver", "Livesplit.PhasmophobiaContractResolver\Livesplit.PhasmophobiaContractResolver.csproj", "{3F433B9B-C600-4D4A-8133-5A354DBD9730}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -21,6 +23,10 @@ Global
 		{A1B2C3D4-E5F6-7890-ABCD-EF1234567890}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{A1B2C3D4-E5F6-7890-ABCD-EF1234567890}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{A1B2C3D4-E5F6-7890-ABCD-EF1234567890}.Release|Any CPU.Build.0 = Release|Any CPU
+		{3F433B9B-C600-4D4A-8133-5A354DBD9730}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{3F433B9B-C600-4D4A-8133-5A354DBD9730}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{3F433B9B-C600-4D4A-8133-5A354DBD9730}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{3F433B9B-C600-4D4A-8133-5A354DBD9730}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -29,4 +35,3 @@ Global
 		SolutionGuid = {55F7094B-DD46-4381-8268-A7EDEFB0951C}
 	EndGlobalSection
 EndGlobal
-

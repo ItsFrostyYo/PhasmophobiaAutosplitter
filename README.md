@@ -44,3 +44,4 @@ Automatic start, split, reset, and optional load removal for Phasmophobia. Track
 
 ## Contributing
 Bug reports and improvements are welcome.
+

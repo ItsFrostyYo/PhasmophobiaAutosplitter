@@ -1,4 +1,5 @@
 using LiveSplit.Model;
+using LiveSplit.UI;
 using System;
 using System.Drawing;
 using System.Windows.Forms;
@@ -24,7 +25,6 @@ namespace LiveSplit.PhasmophobiaAutosplitter
         public bool LoadTimeRemovalEnabled { get; set; } = false;
         public bool WarnOnResetIfGold { get; set; } = false;
 
-        // Compatibility properties used by existing component/memory flow.
         public bool IntroStart
         {
             get => StartWhenTruckLoaded;
@@ -40,14 +40,12 @@ namespace LiveSplit.PhasmophobiaAutosplitter
             get => StartOnFirstMovement;
             set
             {
-                // Start on first movement is always enabled as a backup whenever Start is enabled.
                 if (value)
                     StartWhenTruckLoaded = true;
                 SyncUiFromState();
             }
         }
 
-        // Kept as compatibility alias for older references.
         public bool EndOnTruckUnload
         {
             get => SplitOnContractFinish;
@@ -58,7 +56,6 @@ namespace LiveSplit.PhasmophobiaAutosplitter
             }
         }
 
-        // Kept for compatibility with shared base component logic.
         public bool Reset
         {
             get => ResetWhenAtLobby;
@@ -77,12 +74,13 @@ namespace LiveSplit.PhasmophobiaAutosplitter
 
         public PhasmophobiaSettings(LiveSplitState state)
         {
+            _ = state;
+
             AutoSize = false;
             Dock = DockStyle.Top;
             Margin = new Padding(0);
             Padding = new Padding(0);
-            // Slightly wider/taller for readability, but still small enough
-            // that LiveSplit's settings dialog won't clip the right borders.
+
             int settingsWidth = 460;
             int settingsHeight = 340;
             MinimumSize = new Size(settingsWidth, settingsHeight);
@@ -248,7 +246,7 @@ namespace LiveSplit.PhasmophobiaAutosplitter
                 "Options:\nMulti-Contract: lets you chain contracts/maps in one attempt without resetting after a split.\nReal Time and Game Time behavior outside resets is unchanged.");
             toolTips.SetToolTip(
                 chkLoadTimeRemoval,
-                "Options:\nLoad Time Removal: when using Game Time, loading-screen time after a split is removed.\nUses pixel detection, not memory, so it may be less consistent on some setups.\nReal Time is unchanged.");
+                "Options:\nLoad Time Removal: when using Game Time, loading-screen time after a split is removed.\nUses memory/UI state detection. Real Time is unchanged.");
             toolTips.SetToolTip(
                 chkWarnOnResetIfGold,
                 "Options:\nShows LiveSplit's reset confirmation prompt when the current attempt has at least one gold split.");
@@ -270,11 +268,11 @@ namespace LiveSplit.PhasmophobiaAutosplitter
             {
                 AutoSize = false,
                 Dock = DockStyle.Fill,
-                Text = "- Load Time Removal uses pixel detection, not memory, so it may not be as\n  consistent as start/split/reset and can depend on resolution and possibly UI\n  settings, attempts to scale with monitor.\n"
-                     + "- Leaving the truck and re-entering WILL be treated as a split.\n"
-                     + "- Multiplayer can break memory, be unreliable, resulting in Double Splits,\n  never unpause timer and possible never split.\n"
-                     + "- Game updates can break memory or pixel detection until the autosplitter\n  is updated.\n"
-                     + "- Restarting the game can rarely break detection; restart LiveSplit or\n  reload the component if that happens.",
+                Text = "- Load Time Removal can still vary by setup and game updates.\n"
+                     + "- Leaving the truck and re-entering can be treated as a split.\n"
+                     + "- Multiplayer memory can be unreliable and may cause double splits.\n"
+                     + "- Game updates can break memory detection until the autosplitter is updated.\n"
+                     + "- Restarting the game can rarely break detection; restart LiveSplit or reload the component.",
                 Margin = new Padding(0),
                 TextAlign = ContentAlignment.TopLeft
             };
@@ -300,14 +298,11 @@ namespace LiveSplit.PhasmophobiaAutosplitter
             AddBool(document, xmlSettings, "ResetWhenAtLobby", ResetWhenAtLobby);
             AddBool(document, xmlSettings, "MultiContractEnabled", MultiContractEnabled);
             AddBool(document, xmlSettings, "LoadTimeRemovalEnabled", LoadTimeRemovalEnabled);
-            // Legacy combined flag for backward compatibility: keep writing it so older layouts still see a value.
             AddBool(document, xmlSettings, "MultiContractLoadRemoval", MultiContractEnabled && LoadTimeRemovalEnabled);
             AddBool(document, xmlSettings, "WarnOnResetIfGold", WarnOnResetIfGold);
             AddBool(document, xmlSettings, "EnableStartSplit", EnableStartSplit);
             AddBool(document, xmlSettings, "EnableEndSplit", EnableEndSplit);
             AddBool(document, xmlSettings, "EnableAutoResetOnLeave", ResetWhenAtLobby);
-
-            // Keep old keys for backward compatibility with existing layout files.
             AddBool(document, xmlSettings, "IntroStart", StartWhenTruckLoaded);
             AddBool(document, xmlSettings, "CreativeStart", StartOnFirstMovement);
             AddBool(document, xmlSettings, "Reset", ResetWhenAtLobby);
@@ -325,14 +320,12 @@ namespace LiveSplit.PhasmophobiaAutosplitter
             bool legacyCombined = ReadBool(settings, "MultiContractLoadRemoval", false);
             bool warnOnResetIfGold = ReadBool(settings, "WarnOnResetIfGold", false);
 
-            // Backward compatibility with older config keys.
             if (!HasNode(settings, "StartWhenTruckLoaded"))
                 startTruckLoaded = ReadBool(settings, "IntroStart", true);
             if (!HasNode(settings, "EndOnTruckUnload"))
                 endOnTruckUnload = ReadBool(settings, "EnableEndSplit", true);
             if (!HasNode(settings, "ResetWhenAtLobby"))
                 resetAtLobby = ReadBool(settings, "EnableAutoResetOnLeave", true) || ReadBool(settings, "Reset", true);
-            // If new separate flags are missing but the old combined flag exists, use it for both.
             if (!HasNode(settings, "MultiContractEnabled") && HasNode(settings, "MultiContractLoadRemoval"))
                 multiContractEnabled = legacyCombined;
             if (!HasNode(settings, "LoadTimeRemovalEnabled") && HasNode(settings, "MultiContractLoadRemoval"))
@@ -351,7 +344,6 @@ namespace LiveSplit.PhasmophobiaAutosplitter
 
         private void SyncUiFromState()
         {
-            // Start on first movement is always enabled as the backup behavior when Start is enabled.
             StartOnFirstMovement = StartWhenTruckLoaded;
 
             if (chkStartWhenContractInitialization != null)

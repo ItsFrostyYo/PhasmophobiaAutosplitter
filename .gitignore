@@ -11,3 +11,5 @@ PhasmoInfo2026/
 *.userosscache
 *.sln.docstates
 _*.log
+
+ContractResolverRelease/
