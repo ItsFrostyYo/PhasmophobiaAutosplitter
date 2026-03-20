@@ -32,7 +32,8 @@ Starts when contract initialization is complete. (Game no longer Frozen) If that
 ### Split
 - `Split on Contract Finish`
 Splits on contract-finish leave transition from truck context.
-
+- `Split on Death Leave`
+Splits on Leaving the Contract after Dying to the Ghost. (Mainly for Hug%)
 ### Reset
 - `Allow Resetting on Contract Leave, Game Close and New Run Start`
 Master toggle for all auto-reset behavior.

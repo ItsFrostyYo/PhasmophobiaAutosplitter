@@ -144,6 +144,9 @@ namespace LiveSplit.PhasmophobiaAutosplitter
         private bool gameControllerFlagF9New;
         private IntPtr lastKnownLocalPlayer;
         private int framesSinceLocalPlayerSeen;
+        private int localPlayerMissingInContractFrames;
+        private bool deathLeaveLikelySinceStart;
+        private bool localPlayerFirstPersonMissingNow;
 
         private IntPtr lastLevelController;
         private bool sawLoadingIntoMap;
@@ -189,6 +192,9 @@ namespace LiveSplit.PhasmophobiaAutosplitter
                 suppressResetUntilNextStart = false;
                 lastKnownLocalPlayer = IntPtr.Zero;
                 framesSinceLocalPlayerSeen = int.MaxValue;
+                localPlayerMissingInContractFrames = 0;
+                deathLeaveLikelySinceStart = false;
+                localPlayerFirstPersonMissingNow = false;
                 if (shouldReset)
                     logger?.Log("Reset candidate: process exit");
 
@@ -254,6 +260,9 @@ namespace LiveSplit.PhasmophobiaAutosplitter
                 gameControllerFlagF9New = false;
                 lastLevelController = IntPtr.Zero;
                 hadLocalPlayerLastFrame = false;
+                localPlayerMissingInContractFrames = 0;
+                deathLeaveLikelySinceStart = false;
+                localPlayerFirstPersonMissingNow = false;
                 loadRemovalState = LoadRemovalState.None;
                 loadRemovalFirstPauseStartUtc = DateTime.MinValue;
                 loadRemovalSecondPauseStartUtc = DateTime.MinValue;
@@ -417,6 +426,9 @@ namespace LiveSplit.PhasmophobiaAutosplitter
             Array.Clear(cctvTruckBoolNew, 0, cctvTruckBoolNew.Length);
             sawTruckPresenceDropSinceStart = false;
             sawTruckPresenceReturnSinceStart = false;
+            deathLeaveLikelySinceStart = false;
+            localPlayerMissingInContractFrames = 0;
+            localPlayerFirstPersonMissingNow = false;
             sawTruckUnloadSignalSinceStart = false;
             sawTruckExitTriggerSignalSinceStart = false;
             restartLoopStartSignal = false;
@@ -446,6 +458,9 @@ namespace LiveSplit.PhasmophobiaAutosplitter
             lastLevelController = IntPtr.Zero;
             lastKnownLocalPlayer = IntPtr.Zero;
             framesSinceLocalPlayerSeen = int.MaxValue;
+            localPlayerMissingInContractFrames = 0;
+            deathLeaveLikelySinceStart = false;
+            localPlayerFirstPersonMissingNow = false;
 
             Array.Clear(pcMenuBoolOld, 0, pcMenuBoolOld.Length);
             Array.Clear(pcMenuBoolNew, 0, pcMenuBoolNew.Length);
@@ -506,6 +521,9 @@ namespace LiveSplit.PhasmophobiaAutosplitter
             gameControllerFlagF9New = false;
             lastKnownLocalPlayer = IntPtr.Zero;
             framesSinceLocalPlayerSeen = int.MaxValue;
+            localPlayerMissingInContractFrames = 0;
+            deathLeaveLikelySinceStart = false;
+            localPlayerFirstPersonMissingNow = false;
             loadRemovalState = LoadRemovalState.None;
             loadRemovalFirstPauseStartUtc = DateTime.MinValue;
             loadRemovalSecondPauseStartUtc = DateTime.MinValue;
@@ -1118,34 +1136,23 @@ namespace LiveSplit.PhasmophobiaAutosplitter
 
         public bool ShouldStartForRestartLoop()
         {
-            if (!pointersInitialized || !sawLoadingIntoMap)
+            if (!pointersInitialized || !sawLoadingIntoMap || !startedTimerBefore)
                 return false;
 
-            if (restartLoopStartSignal)
-            {
-                restartLoopStartSignal = false;
-                return MarkStart("Start: restart loop signal");
-            }
-
-            if (!startArmedForMapLoad)
+            if (!restartLoopStartSignal)
                 return false;
 
-            bool startWhenTruckLoaded = settings == null || settings.StartWhenTruckLoaded;
-            bool startOnFirstMovement = settings == null || settings.StartOnFirstMovement;
+            restartLoopStartSignal = false;
 
-            if (!startWhenTruckLoaded && !startOnFirstMovement)
-                return false;
+            // Consume once per detected contract-start signal so component-side reset/start
+            // orchestration cannot retrigger in a tight loop.
+            startArmedForMapLoad = false;
+            truckLoadedStartEdge = false;
+            sawTruckPresenceDropSinceStart = false;
+            sawTruckPresenceReturnSinceStart = false;
 
-            if (startWhenTruckLoaded && truckLoadedStartEdge)
-                return MarkStart("Start: contract initialized");
-
-            if (startWhenTruckLoaded && (!loadingSignalAvailable || !loadingFlagNew) && HasUnfreezeEdge())
-                return MarkStart("Start: player unfreeze candidate");
-
-            if (startOnFirstMovement && HasMovementEdge())
-                return MarkStart("Start fallback: first movement input");
-
-            return false;
+            logger?.Log("Start candidate: restart loop signal");
+            return true;
         }
 
         private void UpdateSignals()
@@ -1219,15 +1226,18 @@ namespace LiveSplit.PhasmophobiaAutosplitter
             {
                 playerSignalPrimed = false;
                 AdvancePlayerSignalsWithoutChanges();
+                localPlayerFirstPersonMissingNow = false;
             }
             else if (!playerSignalPrimed)
             {
                 PrimePlayerSignals(localPlayer);
                 playerSignalPrimed = true;
+                localPlayerFirstPersonMissingNow = game.Read<IntPtr>(localPlayer + 0x128) == IntPtr.Zero;
             }
             else
             {
                 UpdatePlayerSignals(localPlayer);
+                localPlayerFirstPersonMissingNow = game.Read<IntPtr>(localPlayer + 0x128) == IntPtr.Zero;
             }
 
             vrLoadScreenInstanceOld = vrLoadScreenInstanceNew;
@@ -1400,6 +1410,7 @@ namespace LiveSplit.PhasmophobiaAutosplitter
                 logger?.Log("Truck exit trigger local-player edge (" + exitTriggerContainsLocalPlayerOld + " -> " + exitTriggerContainsLocalPlayerNew + ")");
             }
 
+            bool truckLoadedStartEdgeBefore = truckLoadedStartEdge;
             if (startArmedForMapLoad
                 && !truckLoadedStartEdge
                 && localPlayer != IntPtr.Zero
@@ -1407,7 +1418,8 @@ namespace LiveSplit.PhasmophobiaAutosplitter
             {
                 truckLoadedStartEdge = true;
             }
-            if (startedTimerBefore && truckLoadedStartEdge)
+            bool truckLoadedStartTransition = !truckLoadedStartEdgeBefore && truckLoadedStartEdge;
+            if (startedTimerBefore && truckLoadedStartTransition)
             {
                 restartLoopStartSignal = true;
             }
@@ -1415,6 +1427,30 @@ namespace LiveSplit.PhasmophobiaAutosplitter
             if (startedTimerBefore && keySpawnedNew)
             {
                 sawTruckKeySinceStart = true;
+            }
+
+            if (startedTimerBefore && levelController != IntPtr.Zero && !loadingFlagNew)
+            {
+                bool localPlayerLikelyDeadOrDetached = localPlayer == IntPtr.Zero || localPlayerFirstPersonMissingNow;
+                if (localPlayerLikelyDeadOrDetached)
+                {
+                    if (localPlayerMissingInContractFrames < int.MaxValue - 1)
+                        localPlayerMissingInContractFrames++;
+                }
+                else
+                {
+                    localPlayerMissingInContractFrames = 0;
+                }
+
+                if (!deathLeaveLikelySinceStart && localPlayerMissingInContractFrames >= 30)
+                {
+                    deathLeaveLikelySinceStart = true;
+                    logger?.Log("Death-leave signal armed: player dead/detached in-contract");
+                }
+            }
+            else
+            {
+                localPlayerMissingInContractFrames = 0;
             }
 
             if (startedTimerBefore && exitTriggerSignalAvailable && exitTriggerHasPlayersNew)
@@ -1491,9 +1527,11 @@ namespace LiveSplit.PhasmophobiaAutosplitter
                 // Use the truck exit trigger containing the local player as the authoritative
                 // end signal. The unload bool can be missing/late on some runs.
                 bool hasStrictTruckUnloadSignal = hasTruckTriggerSignal || hasTruckUnloadStateSignal;
+                bool relaxedSplitAllowed = useMultiContract && hasSplitThisRun;
                 bool shouldEndForTruckLeave =
                     (settings == null || settings.EndOnTruckUnload)
-                    && hasStrictTruckUnloadSignal && (useMultiContract || sawTruckPresenceDropSinceStart);
+                    && hasStrictTruckUnloadSignal
+                    && (relaxedSplitAllowed || sawTruckPresenceDropSinceStart);
                 bool cctvTruckPresenceNow =
                     CctvTruckBoolOffsets.Length > CctvTruckPresenceOffsetIndex
                     && cctvTruckBoolNew[CctvTruckPresenceOffsetIndex];
@@ -1504,16 +1542,43 @@ namespace LiveSplit.PhasmophobiaAutosplitter
                 bool fallbackTruckLeaveSignal =
                     (settings == null || settings.EndOnTruckUnload)
                     && cctvTruckPresenceNow
-                    && (useMultiContract || sawTruckPresenceReturnSinceStart)
+                    && (relaxedSplitAllowed || sawTruckPresenceReturnSinceStart)
                     && !menuDrivenTransition;
+                bool deathLeaveSignal =
+                    settings != null
+                    && settings.SplitOnDeathLeave
+                    && deathLeaveLikelySinceStart;
+                bool deathLeaveHeuristicSignal =
+                    settings != null
+                    && settings.SplitOnDeathLeave
+                    && !menuDrivenTransition
+                    && !hasStrictTruckUnloadSignal
+                    && !cctvTruckPresenceNow
+                    && sawTruckPresenceDropSinceStart
+                    && !sawTruckPresenceReturnSinceStart
+                    && !exitTriggerContainsLocalPlayerNew
+                    && !exitTriggerContainsLocalPlayerOld;
 
-                if (shouldEndForTruckLeave || fallbackTruckLeaveSignal)
+                if (shouldEndForTruckLeave || fallbackTruckLeaveSignal || deathLeaveSignal || deathLeaveHeuristicSignal)
                 {
                     shouldSplit = true;
                     pendingResetAfterNonEndLeave = false;
-                    logger?.Log(shouldEndForTruckLeave
-                        ? "Split candidate: truck unload signal confirmed"
-                        : "Split candidate fallback: CCTV truck presence");
+                    if (shouldEndForTruckLeave)
+                    {
+                        logger?.Log("Split candidate: truck unload signal confirmed");
+                    }
+                    else if (fallbackTruckLeaveSignal)
+                    {
+                        logger?.Log("Split candidate fallback: CCTV truck presence");
+                    }
+                    else if (deathLeaveSignal)
+                    {
+                        logger?.Log("Split candidate: death leave enabled");
+                    }
+                    else
+                    {
+                        logger?.Log("Split candidate: death leave heuristic");
+                    }
                 }
                 else
                 {
@@ -1523,11 +1588,14 @@ namespace LiveSplit.PhasmophobiaAutosplitter
                         + " triggerSignal=" + hasTruckTriggerSignal
                         + " triggerHasPlayers=" + (exitTriggerHasPlayersNew || exitTriggerHasPlayersOld)
                         + " triggerLocalPlayer=" + (exitTriggerContainsLocalPlayerNew || exitTriggerContainsLocalPlayerOld)
+                        + " localPlayerNull=" + (localPlayer == IntPtr.Zero)
+                        + " firstPersonMissing=" + localPlayerFirstPersonMissingNow
                         + " truckPresenceNow=" + cctvTruckPresenceNow
                         + " truckListPresence=" + (localPlayerInTruckListOld || localPlayerInTruckListNew)
                         + " cctv90=" + cctvTruckBoolNew[0]
                         + " cctvA0=" + cctvTruckBoolNew[1]
                         + " cctvA1=" + cctvTruckBoolNew[2]
+                        + " deathLeaveLikely=" + deathLeaveLikelySinceStart
                         + " truckDropSeen=" + sawTruckPresenceDropSinceStart
                         + " truckReturnSeen=" + sawTruckPresenceReturnSinceStart
                         + " pcMenu20=" + pcMenuBoolNew[0]

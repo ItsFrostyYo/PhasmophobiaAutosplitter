@@ -11,6 +11,7 @@ namespace LiveSplit.PhasmophobiaAutosplitter
     {
         private readonly CheckBox chkStartWhenContractInitialization;
         private readonly CheckBox chkSplitOnContractFinish;
+        private readonly CheckBox chkSplitOnDeathLeave;
         private readonly CheckBox chkAllowResetting;
         private readonly CheckBox chkMultiContract;
         private readonly CheckBox chkLoadTimeRemoval;
@@ -20,6 +21,7 @@ namespace LiveSplit.PhasmophobiaAutosplitter
         public bool StartWhenTruckLoaded { get; set; } = true;
         public bool StartOnFirstMovement { get; private set; } = true;
         public bool SplitOnContractFinish { get; set; } = true;
+        public bool SplitOnDeathLeave { get; set; } = false;
         public bool ResetWhenAtLobby { get; set; } = true;
         public bool MultiContractEnabled { get; set; } = false;
         public bool LoadTimeRemovalEnabled { get; set; } = false;
@@ -146,11 +148,23 @@ namespace LiveSplit.PhasmophobiaAutosplitter
                 AutoSize = true,
                 Text = "Split on Contract Finish",
                 Checked = SplitOnContractFinish,
-                Margin = new Padding(0, 0, 0, 6)
+                Margin = new Padding(0, 0, 0, 2)
             };
             chkSplitOnContractFinish.CheckedChanged += (s, e) =>
             {
                 SplitOnContractFinish = chkSplitOnContractFinish.Checked;
+            };
+
+            chkSplitOnDeathLeave = new CheckBox
+            {
+                AutoSize = true,
+                Text = "Split on Death Leave",
+                Checked = SplitOnDeathLeave,
+                Margin = new Padding(0, 0, 0, 6)
+            };
+            chkSplitOnDeathLeave.CheckedChanged += (s, e) =>
+            {
+                SplitOnDeathLeave = chkSplitOnDeathLeave.Checked;
             };
 
             chkAllowResetting = new CheckBox
@@ -174,11 +188,18 @@ namespace LiveSplit.PhasmophobiaAutosplitter
                 chkSplitOnContractFinish,
                 "Split:\nSplits when a contract-finish loading transition is triggered from truck context.");
             toolTips.SetToolTip(
+                chkSplitOnDeathLeave,
+                "Split:\nSplits when Leaving the Contract after Dying to the Ghost. (Mainly for Hug%)");    
+            toolTips.SetToolTip(
+                chkSplitOnDeathLeave,
+                "Split:\nWhen enabled, leaving a contract after dying (forced death leave) will split instead of reset.");
+            toolTips.SetToolTip(
                 chkAllowResetting,
                 "Reset:\nAllows reset on contract leave, game close, and new run start detection while timer is running.\nIf this is off, all auto-reset behavior is disabled.");
 
             leftFlow.Controls.Add(chkStartWhenContractInitialization);
             leftFlow.Controls.Add(chkSplitOnContractFinish);
+            leftFlow.Controls.Add(chkSplitOnDeathLeave);
             leftFlow.Controls.Add(chkAllowResetting);
             grpStartEndReset.Controls.Add(leftFlow);
 
@@ -295,6 +316,7 @@ namespace LiveSplit.PhasmophobiaAutosplitter
             AddBool(document, xmlSettings, "StartOnFirstMovement", StartOnFirstMovement);
             AddBool(document, xmlSettings, "EndOnTruckUnload", SplitOnContractFinish);
             AddBool(document, xmlSettings, "SplitOnContractFinish", SplitOnContractFinish);
+            AddBool(document, xmlSettings, "SplitOnDeathLeave", SplitOnDeathLeave);
             AddBool(document, xmlSettings, "ResetWhenAtLobby", ResetWhenAtLobby);
             AddBool(document, xmlSettings, "MultiContractEnabled", MultiContractEnabled);
             AddBool(document, xmlSettings, "LoadTimeRemovalEnabled", LoadTimeRemovalEnabled);
@@ -314,6 +336,7 @@ namespace LiveSplit.PhasmophobiaAutosplitter
         {
             bool startTruckLoaded = ReadBool(settings, "StartWhenTruckLoaded", true);
             bool endOnTruckUnload = ReadBool(settings, "EndOnTruckUnload", true);
+            bool splitOnDeathLeave = ReadBool(settings, "SplitOnDeathLeave", false);
             bool resetAtLobby = ReadBool(settings, "ResetWhenAtLobby", true);
             bool multiContractEnabled = ReadBool(settings, "MultiContractEnabled", false);
             bool loadTimeRemovalEnabled = ReadBool(settings, "LoadTimeRemovalEnabled", false);
@@ -335,6 +358,7 @@ namespace LiveSplit.PhasmophobiaAutosplitter
 
             StartWhenTruckLoaded = startTruckLoaded;
             SplitOnContractFinish = endOnTruckUnload;
+            SplitOnDeathLeave = splitOnDeathLeave;
             ResetWhenAtLobby = resetAtLobby;
             MultiContractEnabled = multiContractEnabled;
             LoadTimeRemovalEnabled = loadTimeRemovalEnabled;
@@ -350,6 +374,8 @@ namespace LiveSplit.PhasmophobiaAutosplitter
                 chkStartWhenContractInitialization.Checked = StartWhenTruckLoaded;
             if (chkSplitOnContractFinish != null)
                 chkSplitOnContractFinish.Checked = SplitOnContractFinish;
+            if (chkSplitOnDeathLeave != null)
+                chkSplitOnDeathLeave.Checked = SplitOnDeathLeave;
             if (chkAllowResetting != null)
                 chkAllowResetting.Checked = ResetWhenAtLobby;
             if (chkMultiContract != null)

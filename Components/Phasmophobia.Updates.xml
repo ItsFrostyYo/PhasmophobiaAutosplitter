@@ -48,4 +48,13 @@
             <change>Fixed the Load Remover, removed pixel and color detection and replaced with reliable memory detection.</change>
         </changelog>
     </update>
+    <update version="1.0.7.0">
+        <files>
+            <file path="Components/LiveSplit.PhasmophobiaAutosplitter.dll" status="changed"/>
+        </files>
+        <changelog>
+            <change>Fixed infinite timer start bug.</change>
+            <change>Added New Split Option: Split on Death Leave - Splits on Leaving the Contract after Dying to the Ghost. (Mainly for Hug%)</change>
+        </changelog>
+    </update>
 </updates>

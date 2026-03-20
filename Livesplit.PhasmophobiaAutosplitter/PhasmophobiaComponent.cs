@@ -13,6 +13,7 @@ namespace LiveSplit.PhasmophobiaAutosplitter
     {
         private readonly PhasmophobiaMemory memory;
         private bool queuedStartAfterAutoReset;
+        private bool queuedUnpauseAfterSplitStart;
         private bool skipMemoryResetOnce;
         private bool pendingAutoRestartReset;
 
@@ -56,12 +57,30 @@ namespace LiveSplit.PhasmophobiaAutosplitter
 
         public override bool Start()
         {
+            if (!settings.EnableStartSplit)
+                return false;
+
+            TimerPhase phase = timer.CurrentState.CurrentPhase;
+            if (queuedUnpauseAfterSplitStart)
+            {
+                if (phase == TimerPhase.Paused)
+                {
+                    queuedUnpauseAfterSplitStart = false;
+                    logger?.Log("Start: queued unpause after split run start");
+                    return true;
+                }
+
+                // Drop stale queued unpause requests as soon as timer is no longer paused.
+                if (phase != TimerPhase.Paused)
+                    queuedUnpauseAfterSplitStart = false;
+            }
+
             // In multi-contract mode, once we've already split in this run, don't allow
-            // start logic to retrigger until an actual reset occurs.
+            // regular start logic to retrigger until an actual reset occurs.
             if (memory.HasSplitOccurredThisRun())
                 return false;
 
-            if (timer.CurrentState.CurrentPhase != TimerPhase.NotRunning)
+            if (phase != TimerPhase.NotRunning)
                 return false;
 
             if (queuedStartAfterAutoReset)
@@ -71,18 +90,19 @@ namespace LiveSplit.PhasmophobiaAutosplitter
                 return true;
             }
 
-            return settings.EnableStartSplit && memory.ShouldStart();
+            return memory.ShouldStart();
         }
 
         public override bool Split() =>
-            settings.EnableEndSplit
-            && timer.CurrentState.CurrentPhase == TimerPhase.Running
+            (timer.CurrentState.CurrentPhase == TimerPhase.Running
+                || timer.CurrentState.CurrentPhase == TimerPhase.Paused)
             && memory.ShouldSplitEnd();
 
         public override bool Reset()
         {
             if (!settings.EnableAutoResetOnLeave)
             {
+                queuedUnpauseAfterSplitStart = false;
                 pendingAutoRestartReset = false;
                 skipMemoryResetOnce = false;
                 return false;
@@ -90,16 +110,28 @@ namespace LiveSplit.PhasmophobiaAutosplitter
 
             TimerPhase phase = timer.CurrentState.CurrentPhase;
             bool timerIsRunning = phase == TimerPhase.Running;
-            bool restartSignal = false;
+            bool timerIsPaused = phase == TimerPhase.Paused;
+            bool timerCanAutoRestart = timerIsRunning || timerIsPaused;
+            bool afterFirstSplitWithLoadRemoval =
+                settings.EnableLoadTimeRemoval
+                && memory.HasSplitOccurredThisRun();
 
             if (!pendingAutoRestartReset
-                && timerIsRunning
+                && timerCanAutoRestart
                 && settings.EnableStartSplit
-                && !memory.HasSplitOccurredThisRun())
+                && memory.ShouldStartForRestartLoop())
             {
-                restartSignal = memory.ShouldStartForRestartLoop();
-
-                if (restartSignal)
+                if (afterFirstSplitWithLoadRemoval)
+                {
+                    pendingAutoRestartReset = false;
+                    skipMemoryResetOnce = false;
+                    if (timerIsPaused)
+                    {
+                        queuedUnpauseAfterSplitStart = true;
+                        logger?.Log("Start candidate: split run restart while paused -> queue unpause");
+                    }
+                }
+                else
                 {
                     logger?.Log("Reset candidate: restart loop on new contract start");
                     pendingAutoRestartReset = true;
@@ -107,13 +139,13 @@ namespace LiveSplit.PhasmophobiaAutosplitter
                 }
             }
 
-            if (!timerIsRunning)
+            if (!timerCanAutoRestart)
             {
                 pendingAutoRestartReset = false;
                 skipMemoryResetOnce = false;
             }
 
-            if (pendingAutoRestartReset && timerIsRunning)
+            if (pendingAutoRestartReset && timerCanAutoRestart)
                 return true;
 
             return memory.ShouldResetOnLeave();
@@ -141,6 +173,7 @@ namespace LiveSplit.PhasmophobiaAutosplitter
             if (queuedStartAfterAutoReset)
                 return;
 
+            queuedUnpauseAfterSplitStart = false;
             pendingAutoRestartReset = false;
             memory.ResetRunState();
         }
