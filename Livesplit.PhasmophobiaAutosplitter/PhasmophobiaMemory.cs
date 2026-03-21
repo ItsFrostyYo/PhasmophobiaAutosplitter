@@ -305,6 +305,10 @@ namespace LiveSplit.PhasmophobiaAutosplitter
             if (!pointersInitialized || startedTimerBefore || !sawLoadingIntoMap || !startArmedForMapLoad)
                 return false;
 
+            // Ignore lobby/menu transitions; contract start must come from an in-contract state.
+            if (IsLobbyUiActive())
+                return false;
+
             bool startWhenTruckLoaded = settings == null || settings.StartWhenTruckLoaded;
             bool startOnFirstMovement = settings == null || settings.StartOnFirstMovement;
 
@@ -493,37 +497,11 @@ namespace LiveSplit.PhasmophobiaAutosplitter
             exitTriggerContainsLocalPlayerNew = false;
             localPlayerInTruckListOld = false;
             localPlayerInTruckListNew = false;
-            Array.Clear(cctvTruckBoolOld, 0, cctvTruckBoolOld.Length);
-            Array.Clear(cctvTruckBoolNew, 0, cctvTruckBoolNew.Length);
             pendingResetAfterNonEndLeave = false;
             lobbyStableFrameCount = 0;
             shouldSplit = false;
             shouldReset = false;
             suppressResetUntilNextStart = false;
-            hadLocalPlayerLastFrame = false;
-            startGameButtonDownOld = false;
-            startGameButtonDownNew = false;
-            startGameButtonEnabledOld = false;
-            startGameButtonEnabledNew = false;
-            startGameButtonInteractableOld = false;
-            startGameButtonInteractableNew = false;
-            leaveLobbyButtonDownOld = false;
-            leaveLobbyButtonDownNew = false;
-            leaveLobbyButtonEnabledOld = false;
-            leaveLobbyButtonEnabledNew = false;
-            leaveLobbyButtonInteractableOld = false;
-            leaveLobbyButtonInteractableNew = false;
-            contractBoardAvailableOld = false;
-            contractBoardAvailableNew = false;
-            gameControllerFlagF8Old = false;
-            gameControllerFlagF8New = false;
-            gameControllerFlagF9Old = false;
-            gameControllerFlagF9New = false;
-            lastKnownLocalPlayer = IntPtr.Zero;
-            framesSinceLocalPlayerSeen = int.MaxValue;
-            localPlayerMissingInContractFrames = 0;
-            deathLeaveLikelySinceStart = false;
-            localPlayerFirstPersonMissingNow = false;
             loadRemovalState = LoadRemovalState.None;
             loadRemovalFirstPauseStartUtc = DateTime.MinValue;
             loadRemovalSecondPauseStartUtc = DateTime.MinValue;
@@ -544,6 +522,13 @@ namespace LiveSplit.PhasmophobiaAutosplitter
             logger?.Log(reason);
             return true;
         }
+
+        private bool IsLobbyUiActive() =>
+            startGameButtonEnabledNew
+            || startGameButtonInteractableNew
+            || leaveLobbyButtonEnabledNew
+            || leaveLobbyButtonInteractableNew
+            || contractBoardAvailableNew;
 
         public bool AreResetsBlockedByMultiContract() => false;
 
@@ -1137,6 +1122,9 @@ namespace LiveSplit.PhasmophobiaAutosplitter
         public bool ShouldStartForRestartLoop()
         {
             if (!pointersInitialized || !sawLoadingIntoMap || !startedTimerBefore)
+                return false;
+
+            if (IsLobbyUiActive())
                 return false;
 
             if (!restartLoopStartSignal)

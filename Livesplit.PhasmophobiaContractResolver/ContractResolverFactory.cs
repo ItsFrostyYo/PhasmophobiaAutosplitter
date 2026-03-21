@@ -15,7 +15,7 @@ namespace LiveSplit.PhasmophobiaContractResolver
 
         public string UpdateName => ComponentName;
         public string UpdateURL => "https://raw.githubusercontent.com/ItsFrostyYo/PhasmophobiaAutosplitter/main/";
-        public string XMLURL => UpdateURL + "Components/Phasmophobia.Updates.xml";
+        public string XMLURL => UpdateURL + "ContractResolverRelease/Components/PhasmophobiaContractResolver.Updates.xml";
         public Version Version => Assembly.GetExecutingAssembly().GetName().Version;
     }
 }
