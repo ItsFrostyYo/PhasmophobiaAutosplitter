@@ -524,11 +524,15 @@ namespace LiveSplit.PhasmophobiaAutosplitter
         }
 
         private bool IsLobbyUiActive() =>
-            startGameButtonEnabledNew
-            || startGameButtonInteractableNew
-            || leaveLobbyButtonEnabledNew
-            || leaveLobbyButtonInteractableNew
-            || contractBoardAvailableNew;
+            // Only treat UI flags as "lobby-active" while we're actually out of contract.
+            // Some menu pointers can remain valid during transitions and would otherwise
+            // suppress legitimate contract-start edges.
+            lastLevelController == IntPtr.Zero
+            && (startGameButtonEnabledNew
+                || startGameButtonInteractableNew
+                || leaveLobbyButtonEnabledNew
+                || leaveLobbyButtonInteractableNew
+                || contractBoardAvailableNew);
 
         public bool AreResetsBlockedByMultiContract() => false;
 
