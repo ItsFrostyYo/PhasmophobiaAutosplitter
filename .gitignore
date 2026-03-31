@@ -5,7 +5,8 @@ Livesplit.PhasmophobiaAutosplitter/obj/
 Livesplit.PhasmophobiaAutosplitter/External/
 tools/
 PhasmoInfo2026/
-LiveSplit.PhasmophobiaContractResolver
+Livesplit.PhasmophobiaContractResolver/
+Components/LiveSplit.PhasmophobiaContractResolver.dll
 
 *.user
 *.suo
