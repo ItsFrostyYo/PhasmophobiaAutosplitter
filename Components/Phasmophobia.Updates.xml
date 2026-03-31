@@ -57,4 +57,14 @@
             <change>Added New Split Option: Split on Death Leave - Splits on Leaving the Contract after Dying to the Ghost. (Mainly for Hug%)</change>
         </changelog>
     </update>
+    <update version="1.0.8.0">
+        <files>
+            <file path="Components/LiveSplit.PhasmophobiaAutosplitter.dll" status="changed"/>
+        </files>
+        <changelog>
+            <change>Added 0.16.1.1 Support.</change>
+            <change>Version-aware pointer profiles now preserve legacy 0.16.0.0 support while automatically selecting the correct build data for 0.16.1.1.</change>
+            <change>Cleaned up autosplitter logging so normal logs only keep useful runtime events and version information.</change>
+        </changelog>
+    </update>
 </updates>

@@ -50,6 +50,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Compile Include="GameData\PhasmophobiaBuildProfiles.cs" />
     <Compile Include="GameData\PhasmophobiaCatalog.cs" />
     <Compile Include="PhasmophobiaComponent.cs" />
     <Compile Include="PhasmophobiaMemory.cs" />

@@ -1,6 +1,8 @@
 using System;
 using System.Diagnostics;
+using System.IO;
 using System.Runtime.InteropServices;
+using System.Security.Cryptography;
 using System.Text;
 
 namespace LiveSplit.PhasmophobiaContractResolver
@@ -32,11 +34,6 @@ namespace LiveSplit.PhasmophobiaContractResolver
         private static readonly TimeSpan ProcessScanDelay = TimeSpan.FromSeconds(1.0);
         private static readonly TimeSpan PointerInitRetryDelay = TimeSpan.FromSeconds(1.0);
 
-        // RVAs from tools/phasmophobia_dump_current.
-        private const int LevelControllerTypeInfoRva = 0x05D586A0;
-        private const int CursedItemsControllerTypeInfoRva = 0x05D837E8;
-        private const int LevelValuesTypeInfoRva = 0x05D58928;
-        private const int LevelStatsTypeInfoRva = 0x05D58850;
         private const int CursedItemsControllerCurrentListOffset = 0x90;
 
         private Process process;
@@ -49,6 +46,9 @@ namespace LiveSplit.PhasmophobiaContractResolver
         private IntPtr cursedItemsControllerStaticAddress;
         private IntPtr levelValuesStaticAddress;
         private IntPtr levelStatsStaticAddress;
+        private PhasmophobiaResolverBuildProfile activeBuildProfile;
+        private string activeGameAssemblySha256;
+        private string activeGameAssemblyPath;
 
         public ResolverDisplayMode DisplayMode { get; private set; } = ResolverDisplayMode.ProcessNotFound;
         public string SingleLineText { get; private set; } = "Trying to find process";
@@ -121,6 +121,9 @@ namespace LiveSplit.PhasmophobiaContractResolver
                 cursedItemsControllerStaticAddress = IntPtr.Zero;
                 levelValuesStaticAddress = IntPtr.Zero;
                 levelStatsStaticAddress = IntPtr.Zero;
+                activeBuildProfile = null;
+                activeGameAssemblySha256 = null;
+                activeGameAssemblyPath = null;
                 return true;
             }
 
@@ -145,24 +148,49 @@ namespace LiveSplit.PhasmophobiaContractResolver
 
             nextPointerInitUtc = DateTime.UtcNow + PointerInitRetryDelay;
 
+            if (activeBuildProfile == null)
+            {
+                DetectBuildProfile();
+                if (activeBuildProfile == null)
+                    return false;
+            }
+
             IntPtr gameAssemblyBase = GetGameAssemblyBaseAddress();
             if (gameAssemblyBase == IntPtr.Zero)
                 return levelControllerStaticAddress != IntPtr.Zero;
 
             if (levelControllerStaticAddress == IntPtr.Zero)
-                levelControllerStaticAddress = ResolveSingletonPointerAddress(gameAssemblyBase, LevelControllerTypeInfoRva);
+                levelControllerStaticAddress = ResolveSingletonPointerAddress(gameAssemblyBase, activeBuildProfile.LevelControllerTypeInfoRva);
 
             if (cursedItemsControllerStaticAddress == IntPtr.Zero)
-                cursedItemsControllerStaticAddress = ResolveSingletonPointerAddress(gameAssemblyBase, CursedItemsControllerTypeInfoRva);
+                cursedItemsControllerStaticAddress = ResolveSingletonPointerAddress(gameAssemblyBase, activeBuildProfile.CursedItemsControllerTypeInfoRva);
 
             // Best-effort optional pointers; don't block the resolver state if these fail.
             if (levelValuesStaticAddress == IntPtr.Zero)
-                levelValuesStaticAddress = ResolveSingletonPointerAddress(gameAssemblyBase, LevelValuesTypeInfoRva);
+                levelValuesStaticAddress = ResolveSingletonPointerAddress(gameAssemblyBase, activeBuildProfile.LevelValuesTypeInfoRva);
 
             if (levelStatsStaticAddress == IntPtr.Zero)
-                levelStatsStaticAddress = ResolveSingletonPointerAddress(gameAssemblyBase, LevelStatsTypeInfoRva);
+                levelStatsStaticAddress = ResolveSingletonPointerAddress(gameAssemblyBase, activeBuildProfile.LevelStatsTypeInfoRva);
 
             return levelControllerStaticAddress != IntPtr.Zero;
+        }
+
+        private void DetectBuildProfile()
+        {
+            string gameAssemblyPath = GetGameAssemblyFilePath();
+            if (string.IsNullOrWhiteSpace(gameAssemblyPath))
+                return;
+
+            string hash = ComputeFileSha256(gameAssemblyPath);
+            if (string.Equals(activeGameAssemblyPath, gameAssemblyPath, StringComparison.OrdinalIgnoreCase)
+                && string.Equals(activeGameAssemblySha256, hash, StringComparison.OrdinalIgnoreCase))
+            {
+                return;
+            }
+
+            activeGameAssemblyPath = gameAssemblyPath;
+            activeGameAssemblySha256 = hash;
+            activeBuildProfile = PhasmophobiaResolverBuildProfiles.FindByGameAssemblySha256(hash);
         }
 
         private IntPtr GetGameAssemblyBaseAddress()
@@ -206,6 +234,50 @@ namespace LiveSplit.PhasmophobiaContractResolver
             }
 
             return IntPtr.Zero;
+        }
+
+        private string GetGameAssemblyFilePath()
+        {
+            if (process == null || process.HasExited)
+                return null;
+
+            try
+            {
+                foreach (ProcessModule module in process.Modules)
+                {
+                    if (module.ModuleName.Equals("GameAssembly.dll", StringComparison.OrdinalIgnoreCase))
+                        return module.FileName;
+                }
+            }
+            catch
+            {
+            }
+
+            try
+            {
+                string exePath = process.MainModule?.FileName;
+                if (string.IsNullOrWhiteSpace(exePath))
+                    return null;
+
+                string candidate = Path.Combine(Path.GetDirectoryName(exePath) ?? string.Empty, "GameAssembly.dll");
+                if (File.Exists(candidate))
+                    return candidate;
+            }
+            catch
+            {
+            }
+
+            return null;
+        }
+
+        private static string ComputeFileSha256(string filePath)
+        {
+            using (var stream = File.OpenRead(filePath))
+            using (var sha256 = SHA256.Create())
+            {
+                byte[] hash = sha256.ComputeHash(stream);
+                return BitConverter.ToString(hash).Replace("-", string.Empty);
+            }
         }
 
         private IntPtr ResolveSingletonPointerAddress(IntPtr gameAssemblyBase, int typeInfoRva)

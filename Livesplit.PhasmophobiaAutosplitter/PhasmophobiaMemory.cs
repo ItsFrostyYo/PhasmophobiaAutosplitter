@@ -1,4 +1,6 @@
 using System;
+using System.IO;
+using System.Security.Cryptography;
 using Voxif.AutoSplitter;
 using System.Linq;
 using Voxif.IO;
@@ -55,17 +57,13 @@ namespace LiveSplit.PhasmophobiaAutosplitter
         private static readonly TimeSpan PointerInitRetryDelay = TimeSpan.FromSeconds(1);
         private const int PauseMenuRecentFrames = 120;
         private static readonly TimeSpan LoadRemovalSecondPauseTimeout = TimeSpan.FromSeconds(45);
-
-        // RVAs from tools/phasmophobia_dump_current (Unity 2022.3.40f1).
-        private const int LevelControllerTypeInfoRva = 0x05D586A0;
-        private const int MapControllerTypeInfoRva = 0x05D5FE60;
-        private const int CCTVControllerTypeInfoRva = 0x05D701F0;
-        private const int LoadingControllerTypeInfoRva = 0x05D5C1B0;
-        private const int MainManagerTypeInfoRva = 0x05D5F6C8;
-        private const int GameControllerTypeInfoRva = 0x05DB4D20;
+        private static readonly bool EnableVerboseDiagnosticLogging = false;
 
         private readonly PhasmophobiaSettings settings;
         private DateTime nextPointerInitAttempt = DateTime.MinValue;
+        private PhasmophobiaBuildProfile activeBuildProfile;
+        private string activeGameAssemblySha256;
+        private string activeGameAssemblyPath;
 
         private IntPtr levelControllerStaticAddress;
         private IntPtr mapControllerStaticAddress;
@@ -170,6 +168,7 @@ namespace LiveSplit.PhasmophobiaAutosplitter
 
             OnHook += delegate
             {
+                DetectBuildProfile(force: true);
                 pointersInitialized = false;
                 nextPointerInitAttempt = DateTime.MinValue;
                 TryInitPointers(force: true);
@@ -184,6 +183,9 @@ namespace LiveSplit.PhasmophobiaAutosplitter
                 loadingControllerStaticAddress = IntPtr.Zero;
                 mainManagerStaticAddress = IntPtr.Zero;
                 gameControllerStaticAddress = IntPtr.Zero;
+                activeBuildProfile = null;
+                activeGameAssemblySha256 = null;
+                activeGameAssemblyPath = null;
                 nextPointerInitAttempt = DateTime.MinValue;
 
                 // Always prefer reset on process close so LiveSplit doesn't get stuck running.
@@ -757,7 +759,7 @@ namespace LiveSplit.PhasmophobiaAutosplitter
             {
                 if (playerBoolOld[i] != playerBoolNew[i])
                 {
-                    logger?.Log("Unfreeze candidate edge on player bool offset 0x" + PlayerBoolOffsets[i].ToString("X")
+                    LogDiagnostic("Unfreeze candidate edge on player bool offset 0x" + PlayerBoolOffsets[i].ToString("X")
                              + " (" + playerBoolOld[i] + " -> " + playerBoolNew[i] + ")");
                     return true;
                 }
@@ -767,7 +769,7 @@ namespace LiveSplit.PhasmophobiaAutosplitter
             {
                 if (firstPersonBoolOld[i] != firstPersonBoolNew[i])
                 {
-                    logger?.Log("Unfreeze candidate edge on first-person bool offset 0x" + FirstPersonBoolOffsets[i].ToString("X")
+                    LogDiagnostic("Unfreeze candidate edge on first-person bool offset 0x" + FirstPersonBoolOffsets[i].ToString("X")
                              + " (" + firstPersonBoolOld[i] + " -> " + firstPersonBoolNew[i] + ")");
                     return true;
                 }
@@ -788,6 +790,13 @@ namespace LiveSplit.PhasmophobiaAutosplitter
             if (game == null)
                 return;
 
+            if (activeBuildProfile == null)
+            {
+                DetectBuildProfile(force);
+                if (activeBuildProfile == null)
+                    return;
+            }
+
             if (!force && DateTime.UtcNow < nextPointerInitAttempt)
                 return;
 
@@ -807,14 +816,14 @@ namespace LiveSplit.PhasmophobiaAutosplitter
                 if (gameAssemblyBase == IntPtr.Zero)
                     return;
 
-                levelControllerStaticAddress = ResolveSingletonPointerAddress(gameAssemblyBase, LevelControllerTypeInfoRva, "LevelController");
-                mapControllerStaticAddress = ResolveSingletonPointerAddress(gameAssemblyBase, MapControllerTypeInfoRva, "MapController");
-                cctvControllerStaticAddress = ResolveSingletonPointerAddress(gameAssemblyBase, CCTVControllerTypeInfoRva, "CCTVController");
-                loadingControllerStaticAddress = ResolveSingletonPointerAddress(gameAssemblyBase, LoadingControllerTypeInfoRva, "LoadingController");
+                levelControllerStaticAddress = ResolveSingletonPointerAddress(gameAssemblyBase, activeBuildProfile.LevelControllerTypeInfoRva, "LevelController");
+                mapControllerStaticAddress = ResolveSingletonPointerAddress(gameAssemblyBase, activeBuildProfile.MapControllerTypeInfoRva, "MapController");
+                cctvControllerStaticAddress = ResolveSingletonPointerAddress(gameAssemblyBase, activeBuildProfile.CCTVControllerTypeInfoRva, "CCTVController");
+                loadingControllerStaticAddress = ResolveSingletonPointerAddress(gameAssemblyBase, activeBuildProfile.LoadingControllerTypeInfoRva, "LoadingController");
                 // Optional pointer; do not spam logs if unavailable in current game context.
-                mainManagerStaticAddress = ResolveSingletonPointerAddress(gameAssemblyBase, MainManagerTypeInfoRva, "MainManager", logNulls: false);
+                mainManagerStaticAddress = ResolveSingletonPointerAddress(gameAssemblyBase, activeBuildProfile.MainManagerTypeInfoRva, "MainManager", logNulls: false);
                 // Optional pointer used for additional game-state debug probes.
-                gameControllerStaticAddress = ResolveSingletonPointerAddress(gameAssemblyBase, GameControllerTypeInfoRva, "GameController", logNulls: false);
+                gameControllerStaticAddress = ResolveSingletonPointerAddress(gameAssemblyBase, activeBuildProfile.GameControllerTypeInfoRva, "GameController", logNulls: false);
 
                 // Level and map pointers are required; others are optional.
                 pointersInitialized = levelControllerStaticAddress != IntPtr.Zero
@@ -830,18 +839,74 @@ namespace LiveSplit.PhasmophobiaAutosplitter
 
                 if (pointersInitialized && (!wasInitialized || pointerSetChanged))
                 {
-                    logger?.Log("Pointers initialized (TypeInfo RVAs)");
-                    logger?.Log("  LevelController singleton ptr addr: 0x" + levelControllerStaticAddress.ToString("X"));
-                    logger?.Log("  MapController singleton ptr addr:   0x" + mapControllerStaticAddress.ToString("X"));
-                    logger?.Log("  CCTVController singleton ptr addr:  0x" + cctvControllerStaticAddress.ToString("X"));
-                    logger?.Log("  LoadingController singleton ptr addr: 0x" + loadingControllerStaticAddress.ToString("X"));
-                    logger?.Log("  MainManager singleton ptr addr: 0x" + mainManagerStaticAddress.ToString("X"));
-                    logger?.Log("  GameController singleton ptr addr: 0x" + gameControllerStaticAddress.ToString("X"));
+                    logger?.Log("Pointers initialized for build " + activeBuildProfile.GameVersion);
+                    LogDiagnostic("  LevelController singleton ptr addr: 0x" + levelControllerStaticAddress.ToString("X"));
+                    LogDiagnostic("  MapController singleton ptr addr:   0x" + mapControllerStaticAddress.ToString("X"));
+                    LogDiagnostic("  CCTVController singleton ptr addr:  0x" + cctvControllerStaticAddress.ToString("X"));
+                    LogDiagnostic("  LoadingController singleton ptr addr: 0x" + loadingControllerStaticAddress.ToString("X"));
+                    LogDiagnostic("  MainManager singleton ptr addr: 0x" + mainManagerStaticAddress.ToString("X"));
+                    LogDiagnostic("  GameController singleton ptr addr: 0x" + gameControllerStaticAddress.ToString("X"));
                 }
             }
             catch (Exception ex)
             {
                 logger?.Log("Pointer initialization failed: " + ex.Message);
+            }
+        }
+
+        private void LogDiagnostic(string message)
+        {
+            if (EnableVerboseDiagnosticLogging)
+                logger?.Log(message);
+        }
+
+        private void DetectBuildProfile(bool force = false)
+        {
+            if (game == null)
+                return;
+
+            string gameAssemblyPath = GetGameAssemblyFilePath();
+            if (string.IsNullOrWhiteSpace(gameAssemblyPath))
+                return;
+
+            if (!force
+                && activeBuildProfile != null
+                && string.Equals(activeGameAssemblyPath, gameAssemblyPath, StringComparison.OrdinalIgnoreCase))
+            {
+                return;
+            }
+
+            try
+            {
+                string hash = ComputeFileSha256(gameAssemblyPath);
+                if (!force
+                    && string.Equals(activeGameAssemblyPath, gameAssemblyPath, StringComparison.OrdinalIgnoreCase)
+                    && string.Equals(activeGameAssemblySha256, hash, StringComparison.OrdinalIgnoreCase))
+                {
+                    return;
+                }
+
+                activeGameAssemblyPath = gameAssemblyPath;
+                activeGameAssemblySha256 = hash;
+                activeBuildProfile = PhasmophobiaBuildProfiles.FindByGameAssemblySha256(hash);
+
+                if (activeBuildProfile != null)
+                {
+                    string detectedVersion = activeBuildProfile.GameVersion;
+                    logger?.Log("Detected game version: " + detectedVersion);
+                    logger?.Log("Using pointer profile: " + activeBuildProfile.DumpFolderName);
+                    logger?.Log("GameAssembly SHA256: " + hash);
+                    OnVersionDetected?.Invoke(detectedVersion);
+                    return;
+                }
+
+                logger?.Log("Unsupported GameAssembly build. SHA256: " + hash);
+                logger?.Log("No pointer profile is available for this game build yet.");
+                OnVersionDetected?.Invoke("Unsupported");
+            }
+            catch (Exception ex)
+            {
+                logger?.Log("Failed to detect game version: " + ex.Message);
             }
         }
 
@@ -852,11 +917,52 @@ namespace LiveSplit.PhasmophobiaAutosplitter
 
             if (module == null)
             {
-                logger?.Log("GameAssembly.dll module not found yet");
+                LogDiagnostic("GameAssembly.dll module not found yet");
                 return IntPtr.Zero;
             }
 
             return module.BaseAddress;
+        }
+
+        private string GetGameAssemblyFilePath()
+        {
+            try
+            {
+                var module = game.Process.Modules().FirstOrDefault(m =>
+                    m.ModuleName.Equals("GameAssembly.dll", StringComparison.OrdinalIgnoreCase));
+
+                if (module != null && !string.IsNullOrWhiteSpace(module.FileName))
+                    return module.FileName;
+            }
+            catch
+            {
+            }
+
+            try
+            {
+                string exePath = game.Process.MainModule?.FileName;
+                if (string.IsNullOrWhiteSpace(exePath))
+                    return null;
+
+                string candidate = Path.Combine(Path.GetDirectoryName(exePath) ?? string.Empty, "GameAssembly.dll");
+                if (File.Exists(candidate))
+                    return candidate;
+            }
+            catch
+            {
+            }
+
+            return null;
+        }
+
+        private static string ComputeFileSha256(string filePath)
+        {
+            using (var stream = File.OpenRead(filePath))
+            using (var sha256 = SHA256.Create())
+            {
+                byte[] hash = sha256.ComputeHash(stream);
+                return BitConverter.ToString(hash).Replace("-", string.Empty);
+            }
         }
 
         private IntPtr ResolveSingletonPointerAddress(IntPtr gameAssemblyBase, int typeInfoRva, string label, bool logNulls = true)
@@ -866,7 +972,7 @@ namespace LiveSplit.PhasmophobiaAutosplitter
             if (klass == IntPtr.Zero)
             {
                 if (logNulls)
-                    logger?.Log(label + " class pointer is null at 0x" + typeInfoAddress.ToString("X"));
+                    LogDiagnostic(label + " class pointer is null at 0x" + typeInfoAddress.ToString("X"));
                 return IntPtr.Zero;
             }
 
@@ -874,7 +980,7 @@ namespace LiveSplit.PhasmophobiaAutosplitter
             if (staticFields == IntPtr.Zero)
             {
                 if (logNulls)
-                    logger?.Log(label + " static fields pointer is null");
+                    LogDiagnostic(label + " static fields pointer is null");
                 return IntPtr.Zero;
             }
 
@@ -1255,11 +1361,11 @@ namespace LiveSplit.PhasmophobiaAutosplitter
             vrLoadingLikelyNew = IsVrLoadingLikelyActive();
             if (vrLoadScreenInstanceOld != vrLoadScreenInstanceNew)
             {
-                logger?.Log("VRLoading instance edge (" + vrLoadScreenInstanceOld + " -> " + vrLoadScreenInstanceNew + ")");
+                LogDiagnostic("VRLoading instance edge (" + vrLoadScreenInstanceOld + " -> " + vrLoadScreenInstanceNew + ")");
             }
             if (vrLoadingLikelyOld != vrLoadingLikelyNew)
             {
-                logger?.Log("VRLoading candidate edge (" + vrLoadingLikelyOld + " -> " + vrLoadingLikelyNew + ")"
+                LogDiagnostic("VRLoading candidate edge (" + vrLoadingLikelyOld + " -> " + vrLoadingLikelyNew + ")"
                     + " instance=" + vrLoadScreenInstanceNew
                     + " progress=" + vrLoadingProgressNew.ToString("0.000")
                     + " aux=" + vrLoadingProgressAuxNew.ToString("0.000"));
@@ -1317,47 +1423,47 @@ namespace LiveSplit.PhasmophobiaAutosplitter
             }
             if (startGameButtonDownOld != startGameButtonDownNew)
             {
-                logger?.Log("Lobby Start button edge ("
+                LogDiagnostic("Lobby Start button edge ("
                     + startGameButtonDownOld + " -> " + startGameButtonDownNew + ")");
             }
             if (leaveLobbyButtonDownOld != leaveLobbyButtonDownNew)
             {
-                logger?.Log("Lobby Leave button edge ("
+                LogDiagnostic("Lobby Leave button edge ("
                     + leaveLobbyButtonDownOld + " -> " + leaveLobbyButtonDownNew + ")");
             }
             if (startGameButtonInteractableOld != startGameButtonInteractableNew)
             {
-                logger?.Log("Lobby Start interactable edge ("
+                LogDiagnostic("Lobby Start interactable edge ("
                     + startGameButtonInteractableOld + " -> " + startGameButtonInteractableNew + ")");
             }
             if (startGameButtonEnabledOld != startGameButtonEnabledNew)
             {
-                logger?.Log("Lobby Start enabled edge ("
+                LogDiagnostic("Lobby Start enabled edge ("
                     + startGameButtonEnabledOld + " -> " + startGameButtonEnabledNew + ")");
             }
             if (leaveLobbyButtonInteractableOld != leaveLobbyButtonInteractableNew)
             {
-                logger?.Log("Lobby Leave interactable edge ("
+                LogDiagnostic("Lobby Leave interactable edge ("
                     + leaveLobbyButtonInteractableOld + " -> " + leaveLobbyButtonInteractableNew + ")");
             }
             if (leaveLobbyButtonEnabledOld != leaveLobbyButtonEnabledNew)
             {
-                logger?.Log("Lobby Leave enabled edge ("
+                LogDiagnostic("Lobby Leave enabled edge ("
                     + leaveLobbyButtonEnabledOld + " -> " + leaveLobbyButtonEnabledNew + ")");
             }
             if (contractBoardAvailableOld != contractBoardAvailableNew)
             {
-                logger?.Log("ContractBoard availability edge ("
+                LogDiagnostic("ContractBoard availability edge ("
                     + contractBoardAvailableOld + " -> " + contractBoardAvailableNew + ")");
             }
             if (gameControllerFlagF8Old != gameControllerFlagF8New)
             {
-                logger?.Log("GameController flag 0xF8 edge ("
+                LogDiagnostic("GameController flag 0xF8 edge ("
                     + gameControllerFlagF8Old + " -> " + gameControllerFlagF8New + ")");
             }
             if (gameControllerFlagF9Old != gameControllerFlagF9New)
             {
-                logger?.Log("GameController flag 0xF9 edge ("
+                LogDiagnostic("GameController flag 0xF9 edge ("
                     + gameControllerFlagF9Old + " -> " + gameControllerFlagF9New + ")");
             }
 
@@ -1381,7 +1487,7 @@ namespace LiveSplit.PhasmophobiaAutosplitter
                 cctvTruckBoolNew[i] = cctvController != IntPtr.Zero && game.Read<bool>(cctvController + CctvTruckBoolOffsets[i]);
                 if (cctvTruckBoolOld[i] != cctvTruckBoolNew[i])
                 {
-                    logger?.Log("CCTV truck bool edge 0x" + CctvTruckBoolOffsets[i].ToString("X")
+                    LogDiagnostic("CCTV truck bool edge 0x" + CctvTruckBoolOffsets[i].ToString("X")
                         + " (" + cctvTruckBoolOld[i] + " -> " + cctvTruckBoolNew[i] + ")");
                 }
             }
@@ -1390,16 +1496,16 @@ namespace LiveSplit.PhasmophobiaAutosplitter
 
             if (exitSignalAvailable && exitLevelFlagOld != exitLevelFlagNew)
             {
-                logger?.Log("Truck unload signal edge (" + exitLevelFlagOld + " -> " + exitLevelFlagNew + ")");
+                LogDiagnostic("Truck unload signal edge (" + exitLevelFlagOld + " -> " + exitLevelFlagNew + ")");
             }
 
             if (exitTriggerSignalAvailable && exitTriggerHasPlayersOld != exitTriggerHasPlayersNew)
             {
-                logger?.Log("Truck exit trigger players edge (" + exitTriggerHasPlayersOld + " -> " + exitTriggerHasPlayersNew + ")");
+                LogDiagnostic("Truck exit trigger players edge (" + exitTriggerHasPlayersOld + " -> " + exitTriggerHasPlayersNew + ")");
             }
             if (exitTriggerSignalAvailable && exitTriggerContainsLocalPlayerOld != exitTriggerContainsLocalPlayerNew)
             {
-                logger?.Log("Truck exit trigger local-player edge (" + exitTriggerContainsLocalPlayerOld + " -> " + exitTriggerContainsLocalPlayerNew + ")");
+                LogDiagnostic("Truck exit trigger local-player edge (" + exitTriggerContainsLocalPlayerOld + " -> " + exitTriggerContainsLocalPlayerNew + ")");
             }
 
             bool truckLoadedStartEdgeBefore = truckLoadedStartEdge;
@@ -1574,7 +1680,7 @@ namespace LiveSplit.PhasmophobiaAutosplitter
                 }
                 else
                 {
-                    logger?.Log("Loading edge strict check failed"
+                    LogDiagnostic("Loading edge strict check failed"
                         + " strict=" + hasStrictTruckUnloadSignal
                         + " unloadSignal=" + hasTruckUnloadStateSignal
                         + " triggerSignal=" + hasTruckTriggerSignal
@@ -1739,7 +1845,7 @@ namespace LiveSplit.PhasmophobiaAutosplitter
                 playerBoolNew[i] = game.Read<bool>(player + PlayerBoolOffsets[i]);
 
             if (menuOpenOld != menuOpenNew)
-                logger?.Log("Menu open edge (" + menuOpenOld + " -> " + menuOpenNew + ")");
+                LogDiagnostic("Menu open edge (" + menuOpenOld + " -> " + menuOpenNew + ")");
         }
 
         private void AdvancePlayerSignalsWithoutChanges()

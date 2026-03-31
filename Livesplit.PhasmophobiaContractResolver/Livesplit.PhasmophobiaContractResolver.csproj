@@ -56,6 +56,7 @@
     <Compile Include="ContractResolverSettings.cs">
       <SubType>UserControl</SubType>
     </Compile>
+    <Compile Include="PhasmophobiaResolverBuildProfiles.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
 
