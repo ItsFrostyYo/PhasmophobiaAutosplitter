@@ -12,8 +12,14 @@ All Features are based on and built from Phasmophobia's Speedrun.com Rules - htt
 - Load Time Removal for Game Time between contract transitions.
 
 ## Supported game
-- Current Steam build (Unity 2022.3.40f1 / IL2CPP).
-- Other versions may work partially or break until offsets are updated.
+- Supported Phasmophobia versions: `0.16.0.0` and `0.16.1.1`.
+- The autosplitter detects the running game build and automatically uses the correct pointer profile for supported versions.
+- Unsupported versions may break until their offsets are added.
+
+## Update `1.0.8.0`
+- Added Phasmophobia version `0.16.1.1 Cursed Hollows` Support.
+- Version-aware pointer profiles now preserve legacy `0.16.0.0` support while automatically selecting the correct build data for `0.16.1.1`.
+- Cleaned up autosplitter logging so normal logs only keep useful runtime events and version information.
 
 ## How to use
 1. Open LiveSplit.
