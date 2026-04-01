@@ -7,6 +7,7 @@ All Features are based on and built from Phasmophobia's Speedrun.com Rules - htt
 ## Features
 - Start when the contract is initialized and the player can move.
 - Split on contract finish when leaving from truck context.
+- Split on leaving the contract after dying to the ghost when `Split on Death Leave` is enabled.
 - Reset on non-finish leave, game close, or new-run start (configurable).
 - Multi-Contract support to chain contracts in one attempt.
 - Load Time Removal for Game Time between contract transitions.
@@ -20,6 +21,7 @@ All Features are based on and built from Phasmophobia's Speedrun.com Rules - htt
 - Added Phasmophobia version `0.16.1.1 Cursed Hollows` Support.
 - Version-aware pointer profiles now preserve legacy `0.16.0.0` support while automatically selecting the correct build data for `0.16.1.1`.
 - Cleaned up autosplitter logging so normal logs only keep useful runtime events and version information.
+- Fixed `Split on Death Leave` so it only splits after confirmed ghost death instead of normal contract leaves.
 
 ## How to use
 1. Open LiveSplit.

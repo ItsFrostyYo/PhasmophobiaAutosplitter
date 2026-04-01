@@ -38,6 +38,7 @@ namespace LiveSplit.PhasmophobiaAutosplitter
         private const int CctvTruckPlayersListOffset = 0x100;
         private static readonly int[] CctvTruckBoolOffsets = { 0x90, 0xA0, 0xA1 };
         private const int CctvTruckPresenceOffsetIndex = 1; // 0xA0
+        private const int PlayerDeadPlayerOffset = 0xB8;
         private const int PlayerVrLoadingOffset = 0x1D0;
         private const int VrLoadingIsLoadScreenInstanceOffset = 0x48;
         private const int VrLoadingProgressOffset = 0x4C;
@@ -145,6 +146,8 @@ namespace LiveSplit.PhasmophobiaAutosplitter
         private int localPlayerMissingInContractFrames;
         private bool deathLeaveLikelySinceStart;
         private bool localPlayerFirstPersonMissingNow;
+        private bool localPlayerDeadBodyPresentNow;
+        private bool localPlayerDeathEvidenceSeenSinceStart;
 
         private IntPtr lastLevelController;
         private bool sawLoadingIntoMap;
@@ -197,6 +200,8 @@ namespace LiveSplit.PhasmophobiaAutosplitter
                 localPlayerMissingInContractFrames = 0;
                 deathLeaveLikelySinceStart = false;
                 localPlayerFirstPersonMissingNow = false;
+                localPlayerDeadBodyPresentNow = false;
+                localPlayerDeathEvidenceSeenSinceStart = false;
                 if (shouldReset)
                     logger?.Log("Reset candidate: process exit");
 
@@ -265,6 +270,8 @@ namespace LiveSplit.PhasmophobiaAutosplitter
                 localPlayerMissingInContractFrames = 0;
                 deathLeaveLikelySinceStart = false;
                 localPlayerFirstPersonMissingNow = false;
+                localPlayerDeadBodyPresentNow = false;
+                localPlayerDeathEvidenceSeenSinceStart = false;
                 loadRemovalState = LoadRemovalState.None;
                 loadRemovalFirstPauseStartUtc = DateTime.MinValue;
                 loadRemovalSecondPauseStartUtc = DateTime.MinValue;
@@ -435,6 +442,8 @@ namespace LiveSplit.PhasmophobiaAutosplitter
             deathLeaveLikelySinceStart = false;
             localPlayerMissingInContractFrames = 0;
             localPlayerFirstPersonMissingNow = false;
+            localPlayerDeadBodyPresentNow = false;
+            localPlayerDeathEvidenceSeenSinceStart = false;
             sawTruckUnloadSignalSinceStart = false;
             sawTruckExitTriggerSignalSinceStart = false;
             restartLoopStartSignal = false;
@@ -467,6 +476,8 @@ namespace LiveSplit.PhasmophobiaAutosplitter
             localPlayerMissingInContractFrames = 0;
             deathLeaveLikelySinceStart = false;
             localPlayerFirstPersonMissingNow = false;
+            localPlayerDeadBodyPresentNow = false;
+            localPlayerDeathEvidenceSeenSinceStart = false;
 
             Array.Clear(pcMenuBoolOld, 0, pcMenuBoolOld.Length);
             Array.Clear(pcMenuBoolNew, 0, pcMenuBoolNew.Length);
@@ -521,6 +532,11 @@ namespace LiveSplit.PhasmophobiaAutosplitter
             vrLoadingProgressAuxNew = 0f;
             vrLoadingLikelyOld = false;
             vrLoadingLikelyNew = false;
+            localPlayerMissingInContractFrames = 0;
+            deathLeaveLikelySinceStart = false;
+            localPlayerFirstPersonMissingNow = false;
+            localPlayerDeadBodyPresentNow = false;
+            localPlayerDeathEvidenceSeenSinceStart = false;
             logger?.Log(reason);
             return true;
         }
@@ -894,7 +910,7 @@ namespace LiveSplit.PhasmophobiaAutosplitter
                 {
                     string detectedVersion = activeBuildProfile.GameVersion;
                     logger?.Log("Detected game version: " + detectedVersion);
-                    logger?.Log("Using pointer profile: " + activeBuildProfile.DumpFolderName);
+                    logger?.Log("Using game data for version: " + detectedVersion);
                     logger?.Log("GameAssembly SHA256: " + hash);
                     OnVersionDetected?.Invoke(detectedVersion);
                     return;
@@ -1325,17 +1341,20 @@ namespace LiveSplit.PhasmophobiaAutosplitter
                 playerSignalPrimed = false;
                 AdvancePlayerSignalsWithoutChanges();
                 localPlayerFirstPersonMissingNow = false;
+                localPlayerDeadBodyPresentNow = false;
             }
             else if (!playerSignalPrimed)
             {
                 PrimePlayerSignals(localPlayer);
                 playerSignalPrimed = true;
                 localPlayerFirstPersonMissingNow = game.Read<IntPtr>(localPlayer + 0x128) == IntPtr.Zero;
+                localPlayerDeadBodyPresentNow = game.Read<IntPtr>(localPlayer + PlayerDeadPlayerOffset) != IntPtr.Zero;
             }
             else
             {
                 UpdatePlayerSignals(localPlayer);
                 localPlayerFirstPersonMissingNow = game.Read<IntPtr>(localPlayer + 0x128) == IntPtr.Zero;
+                localPlayerDeadBodyPresentNow = game.Read<IntPtr>(localPlayer + PlayerDeadPlayerOffset) != IntPtr.Zero;
             }
 
             vrLoadScreenInstanceOld = vrLoadScreenInstanceNew;
@@ -1530,6 +1549,11 @@ namespace LiveSplit.PhasmophobiaAutosplitter
             if (startedTimerBefore && levelController != IntPtr.Zero && !loadingFlagNew)
             {
                 bool localPlayerLikelyDeadOrDetached = localPlayer == IntPtr.Zero || localPlayerFirstPersonMissingNow;
+                if (localPlayerDeadBodyPresentNow)
+                {
+                    localPlayerDeathEvidenceSeenSinceStart = true;
+                }
+
                 if (localPlayerLikelyDeadOrDetached)
                 {
                     if (localPlayerMissingInContractFrames < int.MaxValue - 1)
@@ -1540,10 +1564,17 @@ namespace LiveSplit.PhasmophobiaAutosplitter
                     localPlayerMissingInContractFrames = 0;
                 }
 
-                if (!deathLeaveLikelySinceStart && localPlayerMissingInContractFrames >= 30)
+                if (!deathLeaveLikelySinceStart
+                    && localPlayerDeathEvidenceSeenSinceStart
+                    && (localPlayerDeadBodyPresentNow
+                        || localPlayerFirstPersonMissingNow
+                        || localPlayerMissingInContractFrames >= 10))
                 {
                     deathLeaveLikelySinceStart = true;
-                    logger?.Log("Death-leave signal armed: player dead/detached in-contract");
+                    logger?.Log("Death-leave signal armed: confirmed death evidence in-contract"
+                        + " deadBody=" + localPlayerDeadBodyPresentNow
+                        + " firstPersonMissing=" + localPlayerFirstPersonMissingNow
+                        + " missingFrames=" + localPlayerMissingInContractFrames);
                 }
             }
             else
@@ -1646,18 +1677,8 @@ namespace LiveSplit.PhasmophobiaAutosplitter
                     settings != null
                     && settings.SplitOnDeathLeave
                     && deathLeaveLikelySinceStart;
-                bool deathLeaveHeuristicSignal =
-                    settings != null
-                    && settings.SplitOnDeathLeave
-                    && !menuDrivenTransition
-                    && !hasStrictTruckUnloadSignal
-                    && !cctvTruckPresenceNow
-                    && sawTruckPresenceDropSinceStart
-                    && !sawTruckPresenceReturnSinceStart
-                    && !exitTriggerContainsLocalPlayerNew
-                    && !exitTriggerContainsLocalPlayerOld;
 
-                if (shouldEndForTruckLeave || fallbackTruckLeaveSignal || deathLeaveSignal || deathLeaveHeuristicSignal)
+                if (shouldEndForTruckLeave || fallbackTruckLeaveSignal || deathLeaveSignal)
                 {
                     shouldSplit = true;
                     pendingResetAfterNonEndLeave = false;
@@ -1672,10 +1693,6 @@ namespace LiveSplit.PhasmophobiaAutosplitter
                     else if (deathLeaveSignal)
                     {
                         logger?.Log("Split candidate: death leave enabled");
-                    }
-                    else
-                    {
-                        logger?.Log("Split candidate: death leave heuristic");
                     }
                 }
                 else
@@ -1693,6 +1710,8 @@ namespace LiveSplit.PhasmophobiaAutosplitter
                         + " cctv90=" + cctvTruckBoolNew[0]
                         + " cctvA0=" + cctvTruckBoolNew[1]
                         + " cctvA1=" + cctvTruckBoolNew[2]
+                        + " deadBody=" + localPlayerDeadBodyPresentNow
+                        + " deathEvidenceSeen=" + localPlayerDeathEvidenceSeenSinceStart
                         + " deathLeaveLikely=" + deathLeaveLikelySinceStart
                         + " truckDropSeen=" + sawTruckPresenceDropSinceStart
                         + " truckReturnSeen=" + sawTruckPresenceReturnSinceStart
