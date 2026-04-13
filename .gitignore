@@ -1,4 +1,5 @@
 ﻿.vs/
+.cursor/
 
 Livesplit.PhasmophobiaAutosplitter/bin/
 Livesplit.PhasmophobiaAutosplitter/obj/
@@ -7,7 +8,7 @@ tools/
 PhasmoInfo2026/
 Livesplit.PhasmophobiaContractResolver/
 Components/LiveSplit.PhasmophobiaContractResolver.dll
-
+Subnautica_Autosplitter_Sprinter31_4-13-26/
 *.user
 *.suo
 *.userosscache
