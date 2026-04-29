@@ -236,6 +236,9 @@ namespace Voxif.Helpers.Unity {
             public virtual IntPtr FindClass(string classToFind) {
                 return FindClass(classToFind, MainImage);
             }
+            public virtual IntPtr TryFindClassOnce(string classToFind) {
+                return TryFindClassOnce(classToFind, MainImage);
+            }
             public virtual IntPtr FindClass(string classToFind, IntPtr image) {
                 Log("Looking for class: " + classToFind);
                 int namespaceId = classToFind.LastIndexOf('.');
@@ -680,6 +683,8 @@ namespace Voxif.Helpers.Unity {
         
         IntPtr FindClass(string classToFind);
         IntPtr FindClass(string classToFind, IntPtr image);
+        IntPtr TryFindClassOnce(string classToFind);
+        IntPtr TryFindClassOnce(string classToFind, IntPtr image);
 
         IntPtr GetStaticField(IntPtr image, string className, string fieldName, out IntPtr klass, out int staticOffset, bool includeParents = true);
         IntPtr GetStaticField(IntPtr klass, string fieldName, out int staticOffset, bool includeParents = true);

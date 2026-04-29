@@ -64,6 +64,17 @@
         <changelog>
             <change>Added 0.16.1.2 Support.</change>
             <change>Version-aware pointer profiles now preserve 0.16.0.0 and 0.16.1.1 support while automatically selecting the correct build data for 0.16.1.2.</change>
+            <change>Added dynamic IL2CPP class lookup fallback so minor controller-pointer updates are less likely to break the autosplitter immediately.</change>
+        </changelog>
+    </update>
+    <update version="1.0.10.0">
+        <files>
+            <file path="Components/LiveSplit.PhasmophobiaAutosplitter.dll" status="changed"/>
+        </files>
+        <changelog>
+            <change>Hardened dynamic IL2CPP controller lookup fallback for unknown or shifted builds.</change>
+            <change>Kept explicit support for 0.16.0.0, 0.16.1.1, and 0.16.1.2 with version-aware profile selection.</change>
+            <change>Aligned autosplitter and contract resolvers on the same fallback path for minor game updates.</change>
         </changelog>
     </update>
 </updates>

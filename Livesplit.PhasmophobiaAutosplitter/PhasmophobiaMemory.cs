@@ -5,6 +5,7 @@ using Voxif.AutoSplitter;
 using System.Linq;
 using Voxif.IO;
 using Voxif.Memory;
+using LiveSplit.PhasmophobiaDynamicLookup;
 
 namespace LiveSplit.PhasmophobiaAutosplitter
 {
@@ -65,6 +66,8 @@ namespace LiveSplit.PhasmophobiaAutosplitter
         private PhasmophobiaBuildProfile activeBuildProfile;
         private string activeGameAssemblySha256;
         private string activeGameAssemblyPath;
+        private bool dynamicLookupLogged;
+        private bool dynamicPointersInUse;
 
         private IntPtr levelControllerStaticAddress;
         private IntPtr mapControllerStaticAddress;
@@ -174,6 +177,8 @@ namespace LiveSplit.PhasmophobiaAutosplitter
                 DetectBuildProfile(force: true);
                 pointersInitialized = false;
                 nextPointerInitAttempt = DateTime.MinValue;
+                dynamicLookupLogged = false;
+                dynamicPointersInUse = false;
                 TryInitPointers(force: true);
             };
 
@@ -190,6 +195,8 @@ namespace LiveSplit.PhasmophobiaAutosplitter
                 activeGameAssemblySha256 = null;
                 activeGameAssemblyPath = null;
                 nextPointerInitAttempt = DateTime.MinValue;
+                dynamicLookupLogged = false;
+                dynamicPointersInUse = false;
 
                 // Always prefer reset on process close so LiveSplit doesn't get stuck running.
                 shouldSplit = false;
@@ -806,12 +813,7 @@ namespace LiveSplit.PhasmophobiaAutosplitter
             if (game == null)
                 return;
 
-            if (activeBuildProfile == null)
-            {
-                DetectBuildProfile(force);
-                if (activeBuildProfile == null)
-                    return;
-            }
+            DetectBuildProfile(force);
 
             if (!force && DateTime.UtcNow < nextPointerInitAttempt)
                 return;
@@ -832,14 +834,21 @@ namespace LiveSplit.PhasmophobiaAutosplitter
                 if (gameAssemblyBase == IntPtr.Zero)
                     return;
 
-                levelControllerStaticAddress = ResolveSingletonPointerAddress(gameAssemblyBase, activeBuildProfile.LevelControllerTypeInfoRva, "LevelController");
-                mapControllerStaticAddress = ResolveSingletonPointerAddress(gameAssemblyBase, activeBuildProfile.MapControllerTypeInfoRva, "MapController");
-                cctvControllerStaticAddress = ResolveSingletonPointerAddress(gameAssemblyBase, activeBuildProfile.CCTVControllerTypeInfoRva, "CCTVController");
-                loadingControllerStaticAddress = ResolveSingletonPointerAddress(gameAssemblyBase, activeBuildProfile.LoadingControllerTypeInfoRva, "LoadingController");
-                // Optional pointer; do not spam logs if unavailable in current game context.
-                mainManagerStaticAddress = ResolveSingletonPointerAddress(gameAssemblyBase, activeBuildProfile.MainManagerTypeInfoRva, "MainManager", logNulls: false);
-                // Optional pointer used for additional game-state debug probes.
-                gameControllerStaticAddress = ResolveSingletonPointerAddress(gameAssemblyBase, activeBuildProfile.GameControllerTypeInfoRva, "GameController", logNulls: false);
+                if (activeBuildProfile != null)
+                {
+                    levelControllerStaticAddress = ResolveSingletonPointerAddress(gameAssemblyBase, activeBuildProfile.LevelControllerTypeInfoRva, "LevelController");
+                    mapControllerStaticAddress = ResolveSingletonPointerAddress(gameAssemblyBase, activeBuildProfile.MapControllerTypeInfoRva, "MapController");
+                    cctvControllerStaticAddress = ResolveSingletonPointerAddress(gameAssemblyBase, activeBuildProfile.CCTVControllerTypeInfoRva, "CCTVController");
+                    loadingControllerStaticAddress = ResolveSingletonPointerAddress(gameAssemblyBase, activeBuildProfile.LoadingControllerTypeInfoRva, "LoadingController");
+                    // Optional pointer; do not spam logs if unavailable in current game context.
+                    mainManagerStaticAddress = ResolveSingletonPointerAddress(gameAssemblyBase, activeBuildProfile.MainManagerTypeInfoRva, "MainManager", logNulls: false);
+                    // Optional pointer used for additional game-state debug probes.
+                    gameControllerStaticAddress = ResolveSingletonPointerAddress(gameAssemblyBase, activeBuildProfile.GameControllerTypeInfoRva, "GameController", logNulls: false);
+                    dynamicPointersInUse = false;
+                }
+
+                if (levelControllerStaticAddress == IntPtr.Zero || mapControllerStaticAddress == IntPtr.Zero)
+                    TryDynamicPointerLookup();
 
                 // Level and map pointers are required; others are optional.
                 pointersInitialized = levelControllerStaticAddress != IntPtr.Zero
@@ -855,7 +864,10 @@ namespace LiveSplit.PhasmophobiaAutosplitter
 
                 if (pointersInitialized && (!wasInitialized || pointerSetChanged))
                 {
-                    logger?.Log("Pointers initialized for build " + activeBuildProfile.GameVersion);
+                    string pointerSource = dynamicPointersInUse
+                        ? "dynamic IL2CPP lookup"
+                        : "build " + activeBuildProfile?.GameVersion;
+                    logger?.Log("Pointers initialized using " + pointerSource);
                     LogDiagnostic("  LevelController singleton ptr addr: 0x" + levelControllerStaticAddress.ToString("X"));
                     LogDiagnostic("  MapController singleton ptr addr:   0x" + mapControllerStaticAddress.ToString("X"));
                     LogDiagnostic("  CCTVController singleton ptr addr:  0x" + cctvControllerStaticAddress.ToString("X"));
@@ -867,6 +879,40 @@ namespace LiveSplit.PhasmophobiaAutosplitter
             catch (Exception ex)
             {
                 logger?.Log("Pointer initialization failed: " + ex.Message);
+            }
+        }
+
+        private void TryDynamicPointerLookup()
+        {
+            if (game == null)
+                return;
+
+            if (!dynamicLookupLogged)
+            {
+                logger?.Log("Attempting dynamic IL2CPP class lookup for controller pointers.");
+                dynamicLookupLogged = true;
+            }
+
+            if (!PhasmophobiaDynamicIl2CppResolver.TryResolveSingletonStaticBases(
+                game,
+                new[] { "LevelController", "MapController", "CCTVController", "LoadingController", "MainManager", "GameController" },
+                null,
+                out var staticBases))
+            {
+                return;
+            }
+
+            levelControllerStaticAddress = GetResolvedStaticAddress(staticBases, "LevelController", levelControllerStaticAddress);
+            mapControllerStaticAddress = GetResolvedStaticAddress(staticBases, "MapController", mapControllerStaticAddress);
+            cctvControllerStaticAddress = GetResolvedStaticAddress(staticBases, "CCTVController", cctvControllerStaticAddress);
+            loadingControllerStaticAddress = GetResolvedStaticAddress(staticBases, "LoadingController", loadingControllerStaticAddress);
+            mainManagerStaticAddress = GetResolvedStaticAddress(staticBases, "MainManager", mainManagerStaticAddress);
+            gameControllerStaticAddress = GetResolvedStaticAddress(staticBases, "GameController", gameControllerStaticAddress);
+
+            if (levelControllerStaticAddress != IntPtr.Zero && mapControllerStaticAddress != IntPtr.Zero)
+            {
+                dynamicPointersInUse = true;
+                logger?.Log("Dynamic IL2CPP lookup resolved controller classes for this build.");
             }
         }
 
@@ -916,14 +962,23 @@ namespace LiveSplit.PhasmophobiaAutosplitter
                     return;
                 }
 
-                logger?.Log("Unsupported GameAssembly build. SHA256: " + hash);
-                logger?.Log("No pointer profile is available for this game build yet.");
-                OnVersionDetected?.Invoke("Unsupported");
+                logger?.Log("Detected game version: Unknown build");
+                logger?.Log("Using dynamic game data lookup for this build.");
+                logger?.Log("GameAssembly SHA256: " + hash);
+                OnVersionDetected?.Invoke("Dynamic Lookup");
             }
             catch (Exception ex)
             {
                 logger?.Log("Failed to detect game version: " + ex.Message);
             }
+        }
+
+        private static IntPtr GetResolvedStaticAddress(System.Collections.Generic.IReadOnlyDictionary<string, IntPtr> staticBases, string className, IntPtr fallback)
+        {
+            if (staticBases != null && staticBases.TryGetValue(className, out IntPtr staticBase) && staticBase != IntPtr.Zero)
+                return staticBase + SingletonStaticFieldOffset;
+
+            return fallback;
         }
 
         private IntPtr GetGameAssemblyBaseAddress()

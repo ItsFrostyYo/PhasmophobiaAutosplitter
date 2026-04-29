@@ -54,6 +54,7 @@
     <Compile Include="GameData\PhasmophobiaCatalog.cs" />
     <Compile Include="PhasmophobiaComponent.cs" />
     <Compile Include="PhasmophobiaMemory.cs" />
+    <Compile Include="..\Shared\PhasmophobiaDynamicIl2CppResolver.cs" />
     <Compile Include="Settings\PhasmophobiaSettings.cs">
       <SubType>UserControl</SubType>
     </Compile>

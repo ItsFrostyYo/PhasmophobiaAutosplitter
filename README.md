@@ -2,7 +2,7 @@
 
 Automatic start, split, reset, and load removal for Phasmophobia.
 All Features are based on and built from Phasmophobia's Speedrun.com Rules - https://www.speedrun.com/phasmophobia
-
+Github for the Phasmophobia Autosplitter - https://github.com/ItsFrostyYo/PhasmophobiaAutosplitter
 
 ## Features
 - Start when the contract is initialized and the player can move.
@@ -15,11 +15,12 @@ All Features are based on and built from Phasmophobia's Speedrun.com Rules - htt
 ## Supported game
 - Supported Phasmophobia versions: `0.16.0.0`, `0.16.1.1`, and `0.16.1.2`.
 - The autosplitter detects the running game build and automatically uses the correct pointer profile for supported versions.
-- Unsupported versions may break until their offsets are added.
+- A dynamic IL2CPP lookup fallback is also included for minor updates where the controller classes move but their names stay the same.
+- Larger updates can still require a manual refresh if the game changes structure or class names.
 
-## Update `1.0.9.0`
-- Added Phasmophobia version `0.16.1.2` support.
-- Version-aware pointer profiles now preserve `0.16.0.0` and `0.16.1.1` support while automatically selecting the correct build data for `0.16.1.2`.
+## Update `1.0.10.0`
+- Hardened dynamic IL2CPP controller lookup fallback for unknown or shifted builds.
+- Kept explicit support for `0.16.0.0`, `0.16.1.1`, and `0.16.1.2` with version-aware profile selection.
 
 ## How to use
 1. Open LiveSplit.
@@ -56,7 +57,7 @@ Uses LiveSplit reset confirmation when the current run has a gold split.
 - Leaving the truck and re-entering WILL be treated as a split.
 - Multiplayer memory state can be unreliable and may cause missed or duplicate behavior.
 - Load-removal timing can vary slightly on some transitions because game/UI readiness edges are not identical every run.
-- Game updates can change memory structures and break detection until offsets are updated.
+- Major game updates can still require a manual refresh if class names or structures are renamed.
 - Restarting the game can rarely desync detection; reload the component or restart LiveSplit.
 
 ## Contributing
