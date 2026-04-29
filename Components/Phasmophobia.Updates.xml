@@ -74,7 +74,6 @@
         <changelog>
             <change>Hardened dynamic IL2CPP controller lookup fallback for unknown or shifted builds.</change>
             <change>Kept explicit support for 0.16.0.0, 0.16.1.1, and 0.16.1.2 with version-aware profile selection.</change>
-            <change>Aligned autosplitter and contract resolvers on the same fallback path for minor game updates.</change>
         </changelog>
     </update>
 </updates>
