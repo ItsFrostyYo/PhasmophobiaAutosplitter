@@ -76,4 +76,13 @@
             <change>Kept explicit support for 0.16.0.0, 0.16.1.1, and 0.16.1.2 with version-aware profile selection.</change>
         </changelog>
     </update>
+    <update version="1.0.11.0">
+        <files>
+            <file path="Components/LiveSplit.PhasmophobiaAutosplitter.dll" status="changed"/>
+        </files>
+        <changelog>
+            <change>Added 0.17.0.0 support.</change>
+            <change>Kept version-aware profile selection with dynamic fallback for shifted builds.</change>
+        </changelog>
+    </update>
 </updates>

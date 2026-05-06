@@ -8,6 +8,7 @@ tools/
 PhasmoInfo2026/
 Livesplit.PhasmophobiaContractResolver/
 Components/LiveSplit.PhasmophobiaContractResolver.dll
+Components/LiveSplit.PhasmophobiaContractResolverAdvanced.dll
 Subnautica_Autosplitter_Sprinter31_4-13-26/
 *.user
 *.suo

@@ -13,14 +13,14 @@ Github for the Phasmophobia Autosplitter - https://github.com/ItsFrostyYo/Phasmo
 - Load Time Removal for Game Time between contract transitions.
 
 ## Supported game
-- Supported Phasmophobia versions: `0.16.0.0`, `0.16.1.1`, and `0.16.1.2`.
+- Supported Phasmophobia versions: `0.16.0.0`, `0.16.1.1`, `0.16.1.2`, and `0.17.0.0`.
 - The autosplitter detects the running game build and automatically uses the correct pointer profile for supported versions.
 - A dynamic IL2CPP lookup fallback is also included for minor updates where the controller classes move but their names stay the same.
 - Larger updates can still require a manual refresh if the game changes structure or class names.
 
-## Update `1.0.10.0`
-- Hardened dynamic IL2CPP controller lookup fallback for unknown or shifted builds.
-- Kept explicit support for `0.16.0.0`, `0.16.1.1`, and `0.16.1.2` with version-aware profile selection.
+## Update `1.0.11.0`
+- Added explicit support for `0.17.0.0`.
+- Kept version-aware profile selection and dynamic fallback behavior for minor shifted builds.
 
 ## How to use
 1. Open LiveSplit.
