@@ -84,6 +84,17 @@ namespace LiveSplit.PhasmophobiaAutosplitter
             mainManagerTypeInfoRva: 0x06112668,
             gameControllerTypeInfoRva: 0x06167AF8);
 
+        public static readonly PhasmophobiaBuildProfile V0_17_1_0 = new PhasmophobiaBuildProfile(
+            gameVersion: "0.17.1.0",
+            dumpFolderName: "tools/phasmophobia_dump_0.17.1.0",
+            gameAssemblySha256: "36B08D2714BC1E1ECB40D4695FF5C2A90E8DCEB617937266C61CFCF66DCC56C8",
+            levelControllerTypeInfoRva: 0x06240678,
+            mapControllerTypeInfoRva: 0x062488C8,
+            cctvControllerTypeInfoRva: 0x062566A0,
+            loadingControllerTypeInfoRva: 0x06244490,
+            mainManagerTypeInfoRva: 0x062480E8,
+            gameControllerTypeInfoRva: 0x0629DBA8);
+
         private static readonly Dictionary<string, PhasmophobiaBuildProfile> ProfilesByGameAssemblySha256 =
             new Dictionary<string, PhasmophobiaBuildProfile>(StringComparer.OrdinalIgnoreCase)
             {
@@ -91,6 +102,7 @@ namespace LiveSplit.PhasmophobiaAutosplitter
                 [V0_16_1_1.GameAssemblySha256] = V0_16_1_1,
                 [V0_16_1_2.GameAssemblySha256] = V0_16_1_2,
                 [V0_17_0_0.GameAssemblySha256] = V0_17_0_0,
+                [V0_17_1_0.GameAssemblySha256] = V0_17_1_0,
             };
 
         public static PhasmophobiaBuildProfile FindByGameAssemblySha256(string gameAssemblySha256)

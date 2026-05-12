@@ -5,15 +5,14 @@ Livesplit.PhasmophobiaAutosplitter/bin/
 Livesplit.PhasmophobiaAutosplitter/obj/
 Livesplit.PhasmophobiaAutosplitter/External/
 tools/
+# Contract Resolver workspace is fully local-only under tools/
+tools/ContractResolverWorkspace/
 PhasmoInfo2026/
-Livesplit.PhasmophobiaContractResolver/
-Components/LiveSplit.PhasmophobiaContractResolver.dll
-Components/LiveSplit.PhasmophobiaContractResolverAdvanced.dll
 Subnautica_Autosplitter_Sprinter31_4-13-26/
 *.user
 *.suo
 *.userosscache
 *.sln.docstates
 _*.log
-
-ContractResolverRelease/
+Releases/LiveSplit.PhasmophobiaContractResolver-latest.zip
+Releases/LiveSplit.PhasmophobiaContractResolverAdvanced-latest.zip
