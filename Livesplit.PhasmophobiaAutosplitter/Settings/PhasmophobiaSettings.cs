@@ -189,10 +189,7 @@ namespace LiveSplit.PhasmophobiaAutosplitter
                 "Split:\nSplits when a contract-finish loading transition is triggered from truck context.");
             toolTips.SetToolTip(
                 chkSplitOnDeathLeave,
-                "Split:\nSplits when Leaving the Contract after Dying to the Ghost. (Mainly for Hug%)");    
-            toolTips.SetToolTip(
-                chkSplitOnDeathLeave,
-                "Split:\nWhen enabled, leaving a contract after dying (forced death leave) will split instead of reset.");
+                "Split:\nWhen enabled, leaving a contract after dying (forced death leave) will split instead of reset. (Mainly for Hug%)");
             toolTips.SetToolTip(
                 chkAllowResetting,
                 "Reset:\nAllows reset on contract leave, game close, and new run start detection while timer is running.\nIf this is off, all auto-reset behavior is disabled.");
@@ -290,8 +287,9 @@ namespace LiveSplit.PhasmophobiaAutosplitter
                 AutoSize = false,
                 Dock = DockStyle.Fill,
                 Text = "- Leaving the truck and re-entering WILL be treated as a split.\n"
+                     + "- Start Split Behavior can be stuck starting the timer and not reset at the lobby.\n"
                      + "- Multiplayer memory state can be unreliable and may cause missed or duplicate behavior.\n"
-                     + "- Load-removal timing can vary slightly on some transitions because game/UI readiness edges are not identical every run.\n"
+                     + "- Load-removal timing is not perfect, quitting out to lobby wont start the timer until Singleplayer/Multiplayer is selected again\n"
                      + "- Game updates can change memory structures and break detection until offsets are updated.\n"
                      + "- Restarting the game can rarely desync detection; reload the component or restart LiveSplit.",
                 Margin = new Padding(0),

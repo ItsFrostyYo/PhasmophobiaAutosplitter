@@ -94,4 +94,13 @@
             <change>Kept version-aware profile selection with dynamic fallback for shifted builds.</change>
         </changelog>
     </update>
+    <update version="1.0.13.0">
+        <files>
+            <file path="Components/LiveSplit.PhasmophobiaAutosplitter.dll" status="changed"/>
+        </files>
+        <changelog>
+            <change>Added 0.17.1.2 support.</change>
+            <change>Kept version-aware profile selection with dynamic fallback for shifted builds.</change>
+        </changelog>
+    </update>
 </updates>
