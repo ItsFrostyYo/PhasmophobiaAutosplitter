@@ -1,6 +1,8 @@
 # LiveSplit Phasmophobia Autosplitter
 
-# Currently im no longer working on this, last correctly working version was 0.16.1.2 In Game Update Version for the Autosplitter, 0.17.x.x have not seemed to work well, not sure I'll continue this for a game that will constantly update (and *break* at some points) but anyone in the future feel free to continue from any of my work.
+## Currently im no longer working on this, last correctly working version was 0.16.1.2 In Game Update Version for the Autosplitter, 0.17.x.x have not seemed to work well, not sure I'll continue this for a game that will constantly update (and *break* at some points) but anyone in the future feel free to continue from any of my work.
+
+## Description
 
 Automatic start, split, reset, and load removal for Phasmophobia.
 All Features are based on and built from Phasmophobia's Speedrun.com Rules - https://www.speedrun.com/phasmophobia
