@@ -67,3 +67,5 @@ Uses LiveSplit reset confirmation when the current run has a gold split.
 
 ## Contributing
 Bug reports and improvements are welcome.
+
+Not Affiliated or Associated with Kinetic Games/Phasmophobia and has NO Ill Intent, only for helping the Speedrunning Community.
