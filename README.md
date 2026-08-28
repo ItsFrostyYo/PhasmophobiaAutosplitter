@@ -13,14 +13,15 @@ Github for the Phasmophobia Autosplitter - https://github.com/ItsFrostyYo/Phasmo
 - Load Time Removal for Game Time between contract transitions.
 
 ## Supported game
-- Supported Phasmophobia versions: `0.16.0.0`, `0.16.1.1`, `0.16.1.2`, `0.17.0.0`, `0.17.1.0`, and `0.17.1.2`.
-- The autosplitter detects the running game build and automatically uses the correct pointer profile for supported versions.
-- A dynamic IL2CPP lookup fallback is also included for minor updates where the controller classes move but their names stay the same.
-- Larger updates can still require a manual refresh if the game changes structure or class names.
+- Supported Phasmophobia versions: `0.16.1.2` and `0.19.0.0`.
+- The autosplitter verifies the exact `GameAssembly.dll` build before reading memory.
+- Unknown future builds show a warning and run one non-blocking compatibility lookup.
+- Dynamic results must match all required controllers and pass repeated memory-layout validation before automation is enabled.
+- Failed or incompatible lookups leave the autosplitter safely disabled without blocking LiveSplit or reading through unvalidated pointers.
 
-## Update `1.0.13.0`
-- Added explicit support for `0.17.1.2`.
-- Kept version-aware profile selection and dynamic fallback behavior for minor shifted builds.
+## Update `1.0.16.0`
+- The Autosplitter now ONLY Supports 0.16.1.2 and 0.19.0.0 Directly
+- Version Lookup will now Warn if Unsupported and Try and Brief Dynamic Lookup and will Prevent Crashing Livesplit
 
 ## How to use
 1. Open LiveSplit.
@@ -54,10 +55,10 @@ Pauses Game Time during load transitions and resumes at lobby/board readiness or
 Uses LiveSplit reset confirmation when the current run has a gold split.
 
 ## Known issues
-- Leaving the truck and re-entering WILL be treated as a split.
+- Re-Entering and Staying Inside the Truck WILL be Treated as a Split and Not Reset.
 - Multiplayer memory state can be unreliable and may cause missed or duplicate behavior.
-- Load-removal timing can vary slightly on some transitions because game/UI readiness edges are not identical every run.
-- Major game updates can still require a manual refresh if class names or structures are renamed.
+- Load-removal timing is not perfect, quitting out to lobby wont unpause the timer until Singleplayer/Multiplayer is selected again
+- Unsupported Builds only try and Breif an Safe Lookup, most Build other then 0.16.1.2 and 0.19.0.0 Will Not Work.
 - Restarting the game can rarely desync detection; reload the component or restart LiveSplit.
 
 ## Contributing

@@ -1,6 +1,8 @@
 using System;
 using System.IO;
 using System.Security.Cryptography;
+using System.Collections.Generic;
+using System.Threading.Tasks;
 using Voxif.AutoSplitter;
 using System.Linq;
 using Voxif.IO;
@@ -21,7 +23,7 @@ namespace LiveSplit.PhasmophobiaAutosplitter
     {
         protected override string[] ProcessNames => new[] { "Phasmophobia" };
 
-        private static readonly int[] PlayerBoolOffsets = { 0x28, 0x29, 0x2A, 0xE8, 0x114 };
+        private static readonly int[] PlayerBoolOffsets = { 0x28, 0x29, 0x2A };
         private static readonly int[] FirstPersonBoolOffsets = { 0x20, 0x21, 0x22, 0x23, 0x24, 0x40, 0x50, 0x51, 0x90, 0x91 };
         private static readonly int[] PcMenuBoolOffsets = { 0x20, 0x21 };
         private const int Il2CppClassStaticFieldsOffset = 0xB8;
@@ -31,7 +33,6 @@ namespace LiveSplit.PhasmophobiaAutosplitter
         private const int ListSizeOffset = 0x18;
         private const int ArrayDataOffset = 0x20;
         private const int ArrayLengthOffset = 0x18;
-        private const int LevelAreasArrayOffset = 0xA8;
         private const int LevelAreaExitLevelOffset = 0x38;
         private const int ExitLevelTruckUnloadFlagOffset = 0x28;
         private const int ExitLevelTriggerOffset = 0x30;
@@ -39,11 +40,6 @@ namespace LiveSplit.PhasmophobiaAutosplitter
         private const int CctvTruckPlayersListOffset = 0x100;
         private static readonly int[] CctvTruckBoolOffsets = { 0x90, 0xA0, 0xA1 };
         private const int CctvTruckPresenceOffsetIndex = 1; // 0xA0
-        private const int PlayerDeadPlayerOffset = 0xB8;
-        private const int PlayerVrLoadingOffset = 0x1D0;
-        private const int VrLoadingIsLoadScreenInstanceOffset = 0x48;
-        private const int VrLoadingProgressOffset = 0x4C;
-        private const int VrLoadingProgressAuxOffset = 0x50;
         private const int PlayerPhotonViewOffset = 0x20;
         private const int PhotonViewIsMineOffset = 0x68;
         private const int MainManagerServerManagerOffset = 0x50;
@@ -57,6 +53,9 @@ namespace LiveSplit.PhasmophobiaAutosplitter
         private const int MaxPlayerListCount = 64;
         private const int MaxTriggerPlayersCount = 64;
         private static readonly TimeSpan PointerInitRetryDelay = TimeSpan.FromSeconds(1);
+        private static readonly TimeSpan DynamicValidationTimeout = TimeSpan.FromSeconds(60);
+        private const int DynamicValidationFramesRequired = 15;
+        private const int DynamicLookupTimeoutMs = 5000;
         private const int PauseMenuRecentFrames = 120;
         private static readonly TimeSpan LoadRemovalSecondPauseTimeout = TimeSpan.FromSeconds(45);
         private static readonly bool EnableVerboseDiagnosticLogging = false;
@@ -66,8 +65,14 @@ namespace LiveSplit.PhasmophobiaAutosplitter
         private PhasmophobiaBuildProfile activeBuildProfile;
         private string activeGameAssemblySha256;
         private string activeGameAssemblyPath;
-        private bool dynamicLookupLogged;
-        private bool dynamicPointersInUse;
+        private bool buildDetectionComplete;
+        private bool unsupportedBuild;
+        private bool dynamicLookupAttempted;
+        private Task<DynamicLookupResult> dynamicLookupTask;
+        private DynamicLookupResult dynamicLookupCandidate;
+        private DateTime dynamicValidationDeadlineUtc = DateTime.MinValue;
+        private int dynamicValidationFrames;
+        private int processGeneration;
 
         private IntPtr levelControllerStaticAddress;
         private IntPtr mapControllerStaticAddress;
@@ -92,15 +97,6 @@ namespace LiveSplit.PhasmophobiaAutosplitter
         private bool loadingFlagOld;
         private bool loadingFlagNew;
         private bool loadingSignalAvailable;
-        private bool vrLoadingSignalAvailable;
-        private bool vrLoadScreenInstanceOld;
-        private bool vrLoadScreenInstanceNew;
-        private float vrLoadingProgressOld;
-        private float vrLoadingProgressNew;
-        private float vrLoadingProgressAuxOld;
-        private float vrLoadingProgressAuxNew;
-        private bool vrLoadingLikelyOld;
-        private bool vrLoadingLikelyNew;
         private bool startArmedForMapLoad;
         private bool sawTruckKeySinceStart;
         private bool truckLoadedStartEdge;
@@ -168,22 +164,34 @@ namespace LiveSplit.PhasmophobiaAutosplitter
         private bool loadRemovalSecondLoadingSawLoading;
         public bool pointersInitialized;
         public bool startedTimerBefore;
+        public Action<string> OnUnsupportedBuildWarning { get; set; }
+        public Action<bool, string> OnCompatibilityResult { get; set; }
+
+        private PhasmophobiaMemoryLayout ActiveMemoryLayout =>
+            activeBuildProfile?.MemoryLayout ?? PhasmophobiaBuildProfiles.CurrentLayout;
         public PhasmophobiaMemory(Logger logger, PhasmophobiaSettings settings) : base(logger)
         {
             this.settings = settings;
 
             OnHook += delegate
             {
-                DetectBuildProfile(force: true);
+                processGeneration++;
                 pointersInitialized = false;
                 nextPointerInitAttempt = DateTime.MinValue;
-                dynamicLookupLogged = false;
-                dynamicPointersInUse = false;
+                buildDetectionComplete = false;
+                unsupportedBuild = false;
+                dynamicLookupAttempted = false;
+                dynamicLookupTask = null;
+                dynamicLookupCandidate = null;
+                dynamicValidationDeadlineUtc = DateTime.MinValue;
+                dynamicValidationFrames = 0;
                 TryInitPointers(force: true);
             };
 
             OnExit += delegate
             {
+                bool automationWasActive = pointersInitialized && !unsupportedBuild;
+                processGeneration++;
                 pointersInitialized = false;
                 levelControllerStaticAddress = IntPtr.Zero;
                 mapControllerStaticAddress = IntPtr.Zero;
@@ -195,12 +203,17 @@ namespace LiveSplit.PhasmophobiaAutosplitter
                 activeGameAssemblySha256 = null;
                 activeGameAssemblyPath = null;
                 nextPointerInitAttempt = DateTime.MinValue;
-                dynamicLookupLogged = false;
-                dynamicPointersInUse = false;
+                buildDetectionComplete = false;
+                unsupportedBuild = false;
+                dynamicLookupAttempted = false;
+                dynamicLookupTask = null;
+                dynamicLookupCandidate = null;
+                dynamicValidationDeadlineUtc = DateTime.MinValue;
+                dynamicValidationFrames = 0;
 
                 // Always prefer reset on process close so LiveSplit doesn't get stuck running.
                 shouldSplit = false;
-                shouldReset = settings != null && settings.ResetWhenAtLobby;
+                shouldReset = automationWasActive && settings != null && settings.ResetWhenAtLobby;
                 suppressResetUntilNextStart = false;
                 lastKnownLocalPlayer = IntPtr.Zero;
                 framesSinceLocalPlayerSeen = int.MaxValue;
@@ -223,15 +236,6 @@ namespace LiveSplit.PhasmophobiaAutosplitter
                 loadingFlagOld = false;
                 loadingFlagNew = false;
                 loadingSignalAvailable = false;
-                vrLoadingSignalAvailable = false;
-                vrLoadScreenInstanceOld = false;
-                vrLoadScreenInstanceNew = false;
-                vrLoadingProgressOld = 0f;
-                vrLoadingProgressNew = 0f;
-                vrLoadingProgressAuxOld = 0f;
-                vrLoadingProgressAuxNew = 0f;
-                vrLoadingLikelyOld = false;
-                vrLoadingLikelyNew = false;
                 startArmedForMapLoad = false;
                 truckLoadedStartEdge = false;
                 exitLevelFlagOld = false;
@@ -298,7 +302,14 @@ namespace LiveSplit.PhasmophobiaAutosplitter
             if (!base.Update())
                 return false;
 
-            if (!pointersInitialized || mainManagerStaticAddress == IntPtr.Zero || gameControllerStaticAddress == IntPtr.Zero)
+            if (unsupportedBuild)
+            {
+                PollDynamicLookup();
+                if (unsupportedBuild)
+                    return true;
+            }
+
+            if (!unsupportedBuild && (!pointersInitialized || mainManagerStaticAddress == IntPtr.Zero || gameControllerStaticAddress == IntPtr.Zero))
                 TryInitPointers();
 
             if (!pointersInitialized || game == null)
@@ -409,15 +420,6 @@ namespace LiveSplit.PhasmophobiaAutosplitter
             loadRemovalFirstLoadingSawStartHidden = false;
             loadRemovalSecondLoadingInLevelNotLoadingCount = 0;
             loadRemovalSecondLoadingSawLoading = false;
-            vrLoadingSignalAvailable = false;
-            vrLoadScreenInstanceOld = false;
-            vrLoadScreenInstanceNew = false;
-            vrLoadingProgressOld = 0f;
-            vrLoadingProgressNew = 0f;
-            vrLoadingProgressAuxOld = 0f;
-            vrLoadingProgressAuxNew = 0f;
-            vrLoadingLikelyOld = false;
-            vrLoadingLikelyNew = false;
 
             keySpawnedOld = false;
             keySpawnedNew = false;
@@ -530,15 +532,6 @@ namespace LiveSplit.PhasmophobiaAutosplitter
             loadRemovalFirstLoadingSawStartHidden = false;
             loadRemovalSecondLoadingInLevelNotLoadingCount = 0;
             loadRemovalSecondLoadingSawLoading = false;
-            vrLoadingSignalAvailable = false;
-            vrLoadScreenInstanceOld = false;
-            vrLoadScreenInstanceNew = false;
-            vrLoadingProgressOld = 0f;
-            vrLoadingProgressNew = 0f;
-            vrLoadingProgressAuxOld = 0f;
-            vrLoadingProgressAuxNew = 0f;
-            vrLoadingLikelyOld = false;
-            vrLoadingLikelyNew = false;
             localPlayerMissingInContractFrames = 0;
             deathLeaveLikelySinceStart = false;
             localPlayerFirstPersonMissingNow = false;
@@ -747,18 +740,6 @@ namespace LiveSplit.PhasmophobiaAutosplitter
                 }
             }
         }
-        private bool IsVrLoadingLikelyActive()
-        {
-            if (!vrLoadingSignalAvailable || !vrLoadScreenInstanceNew)
-                return false;
-
-            float progressDelta = Math.Abs(vrLoadingProgressNew - vrLoadingProgressOld);
-            float auxDelta = Math.Abs(vrLoadingProgressAuxNew - vrLoadingProgressAuxOld);
-            bool hasProgressValue = vrLoadingProgressNew > 0.0005f || vrLoadingProgressAuxNew > 0.0005f;
-            bool hasProgressMotion = progressDelta > 0.0005f || auxDelta > 0.0005f;
-            return hasProgressValue || hasProgressMotion;
-        }
-
         private bool HasControlStateEdge()
         {
             for (int i = 0; i < PlayerBoolOffsets.Length; i++)
@@ -815,6 +796,12 @@ namespace LiveSplit.PhasmophobiaAutosplitter
 
             DetectBuildProfile(force);
 
+            if (unsupportedBuild || activeBuildProfile == null)
+            {
+                StartDynamicLookup();
+                return;
+            }
+
             if (!force && DateTime.UtcNow < nextPointerInitAttempt)
                 return;
 
@@ -844,11 +831,7 @@ namespace LiveSplit.PhasmophobiaAutosplitter
                     mainManagerStaticAddress = ResolveSingletonPointerAddress(gameAssemblyBase, activeBuildProfile.MainManagerTypeInfoRva, "MainManager", logNulls: false);
                     // Optional pointer used for additional game-state debug probes.
                     gameControllerStaticAddress = ResolveSingletonPointerAddress(gameAssemblyBase, activeBuildProfile.GameControllerTypeInfoRva, "GameController", logNulls: false);
-                    dynamicPointersInUse = false;
                 }
-
-                if (levelControllerStaticAddress == IntPtr.Zero || mapControllerStaticAddress == IntPtr.Zero)
-                    TryDynamicPointerLookup();
 
                 // Level and map pointers are required; others are optional.
                 pointersInitialized = levelControllerStaticAddress != IntPtr.Zero
@@ -864,10 +847,7 @@ namespace LiveSplit.PhasmophobiaAutosplitter
 
                 if (pointersInitialized && (!wasInitialized || pointerSetChanged))
                 {
-                    string pointerSource = dynamicPointersInUse
-                        ? "dynamic IL2CPP lookup"
-                        : "build " + activeBuildProfile?.GameVersion;
-                    logger?.Log("Pointers initialized using " + pointerSource);
+                    logger?.Log("Pointers initialized for game version " + activeBuildProfile.GameVersion);
                     LogDiagnostic("  LevelController singleton ptr addr: 0x" + levelControllerStaticAddress.ToString("X"));
                     LogDiagnostic("  MapController singleton ptr addr:   0x" + mapControllerStaticAddress.ToString("X"));
                     LogDiagnostic("  CCTVController singleton ptr addr:  0x" + cctvControllerStaticAddress.ToString("X"));
@@ -879,40 +859,6 @@ namespace LiveSplit.PhasmophobiaAutosplitter
             catch (Exception ex)
             {
                 logger?.Log("Pointer initialization failed: " + ex.Message);
-            }
-        }
-
-        private void TryDynamicPointerLookup()
-        {
-            if (game == null)
-                return;
-
-            if (!dynamicLookupLogged)
-            {
-                logger?.Log("Attempting dynamic IL2CPP class lookup for controller pointers.");
-                dynamicLookupLogged = true;
-            }
-
-            if (!PhasmophobiaDynamicIl2CppResolver.TryResolveSingletonStaticBases(
-                game,
-                new[] { "LevelController", "MapController", "CCTVController", "LoadingController", "MainManager", "GameController" },
-                null,
-                out var staticBases))
-            {
-                return;
-            }
-
-            levelControllerStaticAddress = GetResolvedStaticAddress(staticBases, "LevelController", levelControllerStaticAddress);
-            mapControllerStaticAddress = GetResolvedStaticAddress(staticBases, "MapController", mapControllerStaticAddress);
-            cctvControllerStaticAddress = GetResolvedStaticAddress(staticBases, "CCTVController", cctvControllerStaticAddress);
-            loadingControllerStaticAddress = GetResolvedStaticAddress(staticBases, "LoadingController", loadingControllerStaticAddress);
-            mainManagerStaticAddress = GetResolvedStaticAddress(staticBases, "MainManager", mainManagerStaticAddress);
-            gameControllerStaticAddress = GetResolvedStaticAddress(staticBases, "GameController", gameControllerStaticAddress);
-
-            if (levelControllerStaticAddress != IntPtr.Zero && mapControllerStaticAddress != IntPtr.Zero)
-            {
-                dynamicPointersInUse = true;
-                logger?.Log("Dynamic IL2CPP lookup resolved controller classes for this build.");
             }
         }
 
@@ -932,7 +878,7 @@ namespace LiveSplit.PhasmophobiaAutosplitter
                 return;
 
             if (!force
-                && activeBuildProfile != null
+                && buildDetectionComplete
                 && string.Equals(activeGameAssemblyPath, gameAssemblyPath, StringComparison.OrdinalIgnoreCase))
             {
                 return;
@@ -951,6 +897,8 @@ namespace LiveSplit.PhasmophobiaAutosplitter
                 activeGameAssemblyPath = gameAssemblyPath;
                 activeGameAssemblySha256 = hash;
                 activeBuildProfile = PhasmophobiaBuildProfiles.FindByGameAssemblySha256(hash);
+                buildDetectionComplete = true;
+                unsupportedBuild = activeBuildProfile == null;
 
                 if (activeBuildProfile != null)
                 {
@@ -962,10 +910,11 @@ namespace LiveSplit.PhasmophobiaAutosplitter
                     return;
                 }
 
-                logger?.Log("Detected game version: Unknown build");
-                logger?.Log("Using dynamic game data lookup for this build.");
+                pointersInitialized = false;
+                logger?.Log("Unknown Phasmophobia build detected. Autosplitter remains disabled while compatibility is checked safely in the background.");
                 logger?.Log("GameAssembly SHA256: " + hash);
-                OnVersionDetected?.Invoke("Dynamic Lookup");
+                OnUnsupportedBuildWarning?.Invoke(hash);
+                OnVersionDetected?.Invoke("Compatibility Check");
             }
             catch (Exception ex)
             {
@@ -973,12 +922,251 @@ namespace LiveSplit.PhasmophobiaAutosplitter
             }
         }
 
-        private static IntPtr GetResolvedStaticAddress(System.Collections.Generic.IReadOnlyDictionary<string, IntPtr> staticBases, string className, IntPtr fallback)
+        private void StartDynamicLookup()
         {
-            if (staticBases != null && staticBases.TryGetValue(className, out IntPtr staticBase) && staticBase != IntPtr.Zero)
-                return staticBase + SingletonStaticFieldOffset;
+            if (game == null || !unsupportedBuild || dynamicLookupAttempted)
+                return;
 
-            return fallback;
+            // Do not consume the single compatibility attempt while IL2CPP is still loading.
+            if (GetGameAssemblyBaseAddress() == IntPtr.Zero)
+                return;
+
+            dynamicLookupAttempted = true;
+            int generation = processGeneration;
+            int processId = game.Process.Id;
+            string assemblyHash = activeGameAssemblySha256;
+            ProcessWrapper wrapper = game;
+
+            logger?.Log("Compatibility lookup started in background; LiveSplit will not be blocked.");
+            dynamicLookupTask = Task.Run(() =>
+            {
+                try
+                {
+                    bool success = PhasmophobiaDynamicIl2CppResolver.TryResolveSingletonStaticBases(
+                        wrapper,
+                        new[] { "LevelController", "MapController", "CCTVController", "LoadingController", "MainManager", "GameController" },
+                        null,
+                        out Dictionary<string, IntPtr> staticBases,
+                        out string diagnostic,
+                        DynamicLookupTimeoutMs);
+
+                    return new DynamicLookupResult(generation, processId, assemblyHash, success, staticBases, diagnostic);
+                }
+                catch (Exception ex)
+                {
+                    return new DynamicLookupResult(generation, processId, assemblyHash, false, null, ex.Message);
+                }
+            });
+        }
+
+        private void PollDynamicLookup()
+        {
+            if (game == null || !unsupportedBuild)
+                return;
+
+            if (!dynamicLookupAttempted)
+                StartDynamicLookup();
+
+            if (dynamicLookupCandidate == null && dynamicLookupTask != null && dynamicLookupTask.IsCompleted)
+            {
+                DynamicLookupResult result;
+                try
+                {
+                    result = dynamicLookupTask.GetAwaiter().GetResult();
+                }
+                catch (Exception ex)
+                {
+                    result = new DynamicLookupResult(processGeneration, game.Process.Id, activeGameAssemblySha256, false, null, ex.Message);
+                }
+                dynamicLookupTask = null;
+
+                if (!IsCurrentDynamicResult(result))
+                    return;
+
+                if (!result.Success || !result.HasAllRequiredControllers)
+                {
+                    string details = result.DescribeFailure();
+                    logger?.Log("Compatibility lookup failed safely: " + details
+                        + " Autosplitter remains disabled for this game process.");
+                    OnCompatibilityResult?.Invoke(false, details);
+                    return;
+                }
+
+                dynamicLookupCandidate = result;
+                dynamicValidationDeadlineUtc = DateTime.UtcNow + DynamicValidationTimeout;
+                dynamicValidationFrames = 0;
+                logger?.Log("Compatibility classes found; validating the current memory layout before enabling automation.");
+            }
+
+            if (dynamicLookupCandidate == null)
+                return;
+
+            if (!IsCurrentDynamicResult(dynamicLookupCandidate))
+            {
+                dynamicLookupCandidate = null;
+                return;
+            }
+
+            if (DateTime.UtcNow >= dynamicValidationDeadlineUtc)
+            {
+                dynamicLookupCandidate = null;
+                dynamicValidationFrames = 0;
+                logger?.Log("Compatibility validation timed out safely. Autosplitter remains disabled for this game process.");
+                OnCompatibilityResult?.Invoke(false,
+                    "Controller classes were found, but neither a stable lobby nor contract memory graph could be validated within "
+                    + (int)DynamicValidationTimeout.TotalSeconds + " seconds.");
+                return;
+            }
+
+            dynamicValidationFrames = ValidateDynamicLayout(dynamicLookupCandidate)
+                ? dynamicValidationFrames + 1
+                : 0;
+
+            if (dynamicValidationFrames >= DynamicValidationFramesRequired)
+                ActivateDynamicPointers(dynamicLookupCandidate);
+        }
+
+        private bool IsCurrentDynamicResult(DynamicLookupResult result)
+        {
+            return result != null
+                && result.Generation == processGeneration
+                && game != null
+                && !game.Process.HasExited
+                && result.ProcessId == game.Process.Id
+                && string.Equals(result.AssemblyHash, activeGameAssemblySha256, StringComparison.OrdinalIgnoreCase);
+        }
+
+        private bool ValidateDynamicLayout(DynamicLookupResult result)
+        {
+            try
+            {
+                IntPtr mainManager = ReadDynamicSingleton(result, "MainManager");
+                if (mainManager != IntPtr.Zero)
+                {
+                    IntPtr serverManager = game.Read<IntPtr>(mainManager + MainManagerServerManagerOffset);
+                    IntPtr levelSelectionManager = game.Read<IntPtr>(mainManager + MainManagerLevelSelectionManagerOffset);
+                    IntPtr leaveButton = serverManager == IntPtr.Zero
+                        ? IntPtr.Zero
+                        : game.Read<IntPtr>(serverManager + ServerManagerLeaveButtonOffset);
+                    IntPtr startButton = serverManager == IntPtr.Zero
+                        ? IntPtr.Zero
+                        : game.Read<IntPtr>(serverManager + ServerManagerStartGameButtonOffset);
+
+                    if (serverManager != IntPtr.Zero
+                        && levelSelectionManager != IntPtr.Zero
+                        && leaveButton != IntPtr.Zero
+                        && startButton != IntPtr.Zero)
+                    {
+                        return true;
+                    }
+                }
+
+                IntPtr levelController = ReadDynamicSingleton(result, "LevelController");
+                IntPtr mapController = ReadDynamicSingleton(result, "MapController");
+                IntPtr loadingController = ReadDynamicSingleton(result, "LoadingController");
+                if (levelController == IntPtr.Zero || mapController == IntPtr.Zero || loadingController == IntPtr.Zero)
+                    return false;
+
+                IntPtr levelAreas = game.Read<IntPtr>(levelController + PhasmophobiaBuildProfiles.CurrentLayout.LevelAreasArrayOffset);
+                int levelAreaCount = levelAreas == IntPtr.Zero ? 0 : game.Read<int>(levelAreas + ArrayLengthOffset);
+                IntPtr players = game.Read<IntPtr>(mapController + 0x28);
+                int playerCount = players == IntPtr.Zero ? -1 : game.Read<int>(players + ListSizeOffset);
+
+                return levelAreaCount > 0
+                    && levelAreaCount <= MaxLevelAreaCount
+                    && playerCount >= 0
+                    && playerCount <= MaxPlayerListCount;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        private IntPtr ReadDynamicSingleton(DynamicLookupResult result, string className)
+        {
+            return result.StaticBases.TryGetValue(className, out IntPtr staticBase) && staticBase != IntPtr.Zero
+                ? game.Read<IntPtr>(staticBase + SingletonStaticFieldOffset)
+                : IntPtr.Zero;
+        }
+
+        private void ActivateDynamicPointers(DynamicLookupResult result)
+        {
+            levelControllerStaticAddress = result.StaticBases["LevelController"] + SingletonStaticFieldOffset;
+            mapControllerStaticAddress = result.StaticBases["MapController"] + SingletonStaticFieldOffset;
+            cctvControllerStaticAddress = result.StaticBases["CCTVController"] + SingletonStaticFieldOffset;
+            loadingControllerStaticAddress = result.StaticBases["LoadingController"] + SingletonStaticFieldOffset;
+            mainManagerStaticAddress = result.StaticBases["MainManager"] + SingletonStaticFieldOffset;
+            gameControllerStaticAddress = result.StaticBases["GameController"] + SingletonStaticFieldOffset;
+            pointersInitialized = true;
+            unsupportedBuild = false;
+            dynamicLookupCandidate = null;
+            dynamicValidationFrames = 0;
+            logger?.Log("Compatibility validation passed. Autosplitter enabled using the current 0.19.0.0 memory layout.");
+            OnVersionDetected?.Invoke("Compatible Unknown Build");
+            OnCompatibilityResult?.Invoke(true,
+                "The required controller classes and current memory layout were validated. Automation has been enabled for this process.");
+        }
+
+        private sealed class DynamicLookupResult
+        {
+            private static readonly string[] RequiredControllers =
+            {
+                "LevelController", "MapController", "CCTVController",
+                "LoadingController", "MainManager", "GameController"
+            };
+
+            public DynamicLookupResult(
+                int generation,
+                int processId,
+                string assemblyHash,
+                bool success,
+                Dictionary<string, IntPtr> staticBases,
+                string error)
+            {
+                Generation = generation;
+                ProcessId = processId;
+                AssemblyHash = assemblyHash;
+                Success = success;
+                StaticBases = staticBases ?? new Dictionary<string, IntPtr>(StringComparer.Ordinal);
+                Error = error;
+            }
+
+            public int Generation { get; }
+            public int ProcessId { get; }
+            public string AssemblyHash { get; }
+            public bool Success { get; }
+            public Dictionary<string, IntPtr> StaticBases { get; }
+            public string Error { get; }
+
+            public bool HasAllRequiredControllers
+            {
+                get
+                {
+                    foreach (string className in RequiredControllers)
+                    {
+                        if (!StaticBases.TryGetValue(className, out IntPtr address) || address == IntPtr.Zero)
+                            return false;
+                    }
+                    return true;
+                }
+            }
+
+            public string DescribeFailure()
+            {
+                var missing = RequiredControllers
+                    .Where(className => !StaticBases.TryGetValue(className, out IntPtr address) || address == IntPtr.Zero)
+                    .ToArray();
+                string missingText = missing.Length == 0
+                    ? null
+                    : "Missing controller classes: " + string.Join(", ", missing) + ".";
+
+                if (string.IsNullOrWhiteSpace(Error))
+                    return missingText ?? "No usable IL2CPP controller addresses were returned.";
+                if (string.IsNullOrWhiteSpace(missingText))
+                    return Error;
+                return missingText + " " + Error;
+            }
         }
 
         private IntPtr GetGameAssemblyBaseAddress()
@@ -1131,7 +1319,7 @@ namespace LiveSplit.PhasmophobiaAutosplitter
             if (levelController == IntPtr.Zero)
                 return false;
 
-            IntPtr levelAreasArray = game.Read<IntPtr>(levelController + LevelAreasArrayOffset);
+            IntPtr levelAreasArray = game.Read<IntPtr>(levelController + ActiveMemoryLayout.LevelAreasArrayOffset);
             if (levelAreasArray == IntPtr.Zero)
                 return false;
 
@@ -1165,7 +1353,7 @@ namespace LiveSplit.PhasmophobiaAutosplitter
             if (levelController == IntPtr.Zero)
                 return false;
 
-            IntPtr levelAreasArray = game.Read<IntPtr>(levelController + LevelAreasArrayOffset);
+            IntPtr levelAreasArray = game.Read<IntPtr>(levelController + ActiveMemoryLayout.LevelAreasArrayOffset);
             if (levelAreasArray == IntPtr.Zero)
                 return false;
 
@@ -1207,7 +1395,7 @@ namespace LiveSplit.PhasmophobiaAutosplitter
             if (levelController == IntPtr.Zero)
                 return false;
 
-            IntPtr levelAreasArray = game.Read<IntPtr>(levelController + LevelAreasArrayOffset);
+            IntPtr levelAreasArray = game.Read<IntPtr>(levelController + ActiveMemoryLayout.LevelAreasArrayOffset);
             if (levelAreasArray == IntPtr.Zero)
                 return false;
 
@@ -1336,7 +1524,7 @@ namespace LiveSplit.PhasmophobiaAutosplitter
             IntPtr keyPointer = IntPtr.Zero;
             if (levelController != IntPtr.Zero)
             {
-                keyPointer = game.Read<IntPtr>(levelController + 0xE0); // LevelController.key
+                keyPointer = game.Read<IntPtr>(levelController + ActiveMemoryLayout.LevelControllerKeyOffset);
             }
 
             if (levelLoadedNow)
@@ -1402,47 +1590,14 @@ namespace LiveSplit.PhasmophobiaAutosplitter
             {
                 PrimePlayerSignals(localPlayer);
                 playerSignalPrimed = true;
-                localPlayerFirstPersonMissingNow = game.Read<IntPtr>(localPlayer + 0x128) == IntPtr.Zero;
-                localPlayerDeadBodyPresentNow = game.Read<IntPtr>(localPlayer + PlayerDeadPlayerOffset) != IntPtr.Zero;
+                localPlayerFirstPersonMissingNow = ReadFirstPersonController(localPlayer) == IntPtr.Zero;
+                localPlayerDeadBodyPresentNow = game.Read<IntPtr>(localPlayer + ActiveMemoryLayout.PlayerDeadPlayerOffset) != IntPtr.Zero;
             }
             else
             {
                 UpdatePlayerSignals(localPlayer);
-                localPlayerFirstPersonMissingNow = game.Read<IntPtr>(localPlayer + 0x128) == IntPtr.Zero;
-                localPlayerDeadBodyPresentNow = game.Read<IntPtr>(localPlayer + PlayerDeadPlayerOffset) != IntPtr.Zero;
-            }
-
-            vrLoadScreenInstanceOld = vrLoadScreenInstanceNew;
-            vrLoadingProgressOld = vrLoadingProgressNew;
-            vrLoadingProgressAuxOld = vrLoadingProgressAuxNew;
-            vrLoadingSignalAvailable = false;
-            vrLoadScreenInstanceNew = false;
-            vrLoadingProgressNew = 0f;
-            vrLoadingProgressAuxNew = 0f;
-            IntPtr localPlayerForVrLoading = localPlayer != IntPtr.Zero ? localPlayer : lastKnownLocalPlayer;
-            if (localPlayerForVrLoading != IntPtr.Zero)
-            {
-                IntPtr vrLoading = game.Read<IntPtr>(localPlayerForVrLoading + PlayerVrLoadingOffset); // Player.vrLoading
-                if (vrLoading != IntPtr.Zero)
-                {
-                    vrLoadingSignalAvailable = true;
-                    vrLoadScreenInstanceNew = game.Read<bool>(vrLoading + VrLoadingIsLoadScreenInstanceOffset);
-                    vrLoadingProgressNew = game.Read<float>(vrLoading + VrLoadingProgressOffset);
-                    vrLoadingProgressAuxNew = game.Read<float>(vrLoading + VrLoadingProgressAuxOffset);
-                }
-            }
-            vrLoadingLikelyOld = vrLoadingLikelyNew;
-            vrLoadingLikelyNew = IsVrLoadingLikelyActive();
-            if (vrLoadScreenInstanceOld != vrLoadScreenInstanceNew)
-            {
-                LogDiagnostic("VRLoading instance edge (" + vrLoadScreenInstanceOld + " -> " + vrLoadScreenInstanceNew + ")");
-            }
-            if (vrLoadingLikelyOld != vrLoadingLikelyNew)
-            {
-                LogDiagnostic("VRLoading candidate edge (" + vrLoadingLikelyOld + " -> " + vrLoadingLikelyNew + ")"
-                    + " instance=" + vrLoadScreenInstanceNew
-                    + " progress=" + vrLoadingProgressNew.ToString("0.000")
-                    + " aux=" + vrLoadingProgressAuxNew.ToString("0.000"));
+                localPlayerFirstPersonMissingNow = ReadFirstPersonController(localPlayer) == IntPtr.Zero;
+                localPlayerDeadBodyPresentNow = game.Read<IntPtr>(localPlayer + ActiveMemoryLayout.PlayerDeadPlayerOffset) != IntPtr.Zero;
             }
 
             loadingFlagOld = loadingFlagNew;
@@ -1492,8 +1647,8 @@ namespace LiveSplit.PhasmophobiaAutosplitter
             IntPtr gameController = ReadSingletonInstance(gameControllerStaticAddress);
             if (gameController != IntPtr.Zero)
             {
-                gameControllerFlagF8New = game.Read<bool>(gameController + 0xF8);
-                gameControllerFlagF9New = game.Read<bool>(gameController + 0xF9);
+                gameControllerFlagF8New = game.Read<bool>(gameController + ActiveMemoryLayout.GameControllerPrimaryFlagOffset);
+                gameControllerFlagF9New = game.Read<bool>(gameController + ActiveMemoryLayout.GameControllerSecondaryFlagOffset);
             }
             if (startGameButtonDownOld != startGameButtonDownNew)
             {
@@ -1532,12 +1687,12 @@ namespace LiveSplit.PhasmophobiaAutosplitter
             }
             if (gameControllerFlagF8Old != gameControllerFlagF8New)
             {
-                LogDiagnostic("GameController flag 0xF8 edge ("
+                LogDiagnostic("GameController primary flag edge ("
                     + gameControllerFlagF8Old + " -> " + gameControllerFlagF8New + ")");
             }
             if (gameControllerFlagF9Old != gameControllerFlagF9New)
             {
-                LogDiagnostic("GameController flag 0xF9 edge ("
+                LogDiagnostic("GameController secondary flag edge ("
                     + gameControllerFlagF9Old + " -> " + gameControllerFlagF9New + ")");
             }
 
@@ -1679,15 +1834,13 @@ namespace LiveSplit.PhasmophobiaAutosplitter
             bool resetWhenAtLobby = settings != null && settings.ResetWhenAtLobby;
             bool useMultiContract = settings != null && settings.EnableMultiContract;
             bool localPlayerLikelyPresent = localPlayer != IntPtr.Zero || lastKnownLocalPlayer != IntPtr.Zero;
-            bool vrLoadingLikelyActive = vrLoadingLikelyNew;
-            bool vrLoadingVisualActive = vrLoadScreenInstanceNew || vrLoadingLikelyActive;
             bool inLobbyNow = levelController == IntPtr.Zero;
             bool cctvTruckFlagOld = cctvTruckBoolOld.Length > 0 && cctvTruckBoolOld[0];
             bool cctvTruckFlagNew = cctvTruckBoolNew.Length > 0 && cctvTruckBoolNew[0];
             bool cctvTruckFadeOld = cctvTruckBoolOld.Length > 2 && cctvTruckBoolOld[2];
             bool cctvTruckFadeNew = cctvTruckBoolNew.Length > 2 && cctvTruckBoolNew[2];
 
-            UpdateLoadRemovalState(levelController, truckLoadedStartEdge, loadingFlagNew || vrLoadingVisualActive);
+            UpdateLoadRemovalState(levelController, truckLoadedStartEdge, loadingFlagNew);
 
             if (startedTimerBefore
                 && !shouldSplit
@@ -1847,7 +2000,7 @@ namespace LiveSplit.PhasmophobiaAutosplitter
             menuOpenNew = false;
             Array.Clear(pcMenuBoolNew, 0, pcMenuBoolNew.Length);
 
-            IntPtr firstPersonController = game.Read<IntPtr>(player + 0x128); // Player.firstPersonController
+            IntPtr firstPersonController = ReadFirstPersonController(player);
             if (firstPersonController != IntPtr.Zero)
             {
                 moveInputNew = game.Read<Vector2f>(firstPersonController + 0x70); // FirstPersonController movement input
@@ -1855,7 +2008,7 @@ namespace LiveSplit.PhasmophobiaAutosplitter
                     firstPersonBoolNew[i] = game.Read<bool>(firstPersonController + FirstPersonBoolOffsets[i]);
             }
 
-            IntPtr pcMenu = game.Read<IntPtr>(player + 0x150); // Player.pcMenu
+            IntPtr pcMenu = ReadPcMenu(player);
             if (pcMenu != IntPtr.Zero)
             {
                 for (int i = 0; i < PcMenuBoolOffsets.Length; i++)
@@ -1888,7 +2041,7 @@ namespace LiveSplit.PhasmophobiaAutosplitter
             for (int i = 0; i < FirstPersonBoolOffsets.Length; i++)
                 firstPersonBoolOld[i] = firstPersonBoolNew[i];
 
-            IntPtr firstPersonController = game.Read<IntPtr>(player + 0x128); // Player.firstPersonController
+            IntPtr firstPersonController = ReadFirstPersonController(player);
             for (int i = 0; i < FirstPersonBoolOffsets.Length; i++)
                 firstPersonBoolNew[i] = false;
             if (firstPersonController != IntPtr.Zero)
@@ -1902,7 +2055,7 @@ namespace LiveSplit.PhasmophobiaAutosplitter
                 moveInputNew = default(Vector2f);
             }
 
-            IntPtr pcMenu = game.Read<IntPtr>(player + 0x150); // Player.pcMenu
+            IntPtr pcMenu = ReadPcMenu(player);
             menuOpenNew = false;
             Array.Clear(pcMenuBoolNew, 0, pcMenuBoolNew.Length);
             if (pcMenu != IntPtr.Zero)
@@ -1931,6 +2084,32 @@ namespace LiveSplit.PhasmophobiaAutosplitter
                 playerBoolOld[i] = playerBoolNew[i];
             for (int i = 0; i < FirstPersonBoolOffsets.Length; i++)
                 firstPersonBoolOld[i] = firstPersonBoolNew[i];
+        }
+
+        private IntPtr ReadFirstPersonController(IntPtr networkPlayer)
+        {
+            IntPtr localPlayer = ReadLocalPlayerObject(networkPlayer);
+            return localPlayer == IntPtr.Zero
+                ? IntPtr.Zero
+                : game.Read<IntPtr>(localPlayer + ActiveMemoryLayout.FirstPersonControllerOffset);
+        }
+
+        private IntPtr ReadPcMenu(IntPtr networkPlayer)
+        {
+            IntPtr localPlayer = ReadLocalPlayerObject(networkPlayer);
+            return localPlayer == IntPtr.Zero
+                ? IntPtr.Zero
+                : game.Read<IntPtr>(localPlayer + ActiveMemoryLayout.PcMenuOffset);
+        }
+
+        private IntPtr ReadLocalPlayerObject(IntPtr networkPlayer)
+        {
+            if (networkPlayer == IntPtr.Zero)
+                return IntPtr.Zero;
+
+            return ActiveMemoryLayout.UsesNestedLocalPlayer
+                ? game.Read<IntPtr>(networkPlayer + ActiveMemoryLayout.NetworkPlayerLocalPlayerOffset)
+                : networkPlayer;
         }
 
         private struct Vector2f

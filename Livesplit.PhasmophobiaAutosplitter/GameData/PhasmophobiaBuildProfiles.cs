@@ -3,21 +3,53 @@ using System.Collections.Generic;
 
 namespace LiveSplit.PhasmophobiaAutosplitter
 {
+    internal sealed class PhasmophobiaMemoryLayout
+    {
+        public PhasmophobiaMemoryLayout(
+            int levelAreasArrayOffset,
+            int levelControllerKeyOffset,
+            int playerDeadPlayerOffset,
+            int networkPlayerLocalPlayerOffset,
+            int firstPersonControllerOffset,
+            int pcMenuOffset,
+            int gameControllerPrimaryFlagOffset,
+            int gameControllerSecondaryFlagOffset)
+        {
+            LevelAreasArrayOffset = levelAreasArrayOffset;
+            LevelControllerKeyOffset = levelControllerKeyOffset;
+            PlayerDeadPlayerOffset = playerDeadPlayerOffset;
+            NetworkPlayerLocalPlayerOffset = networkPlayerLocalPlayerOffset;
+            FirstPersonControllerOffset = firstPersonControllerOffset;
+            PcMenuOffset = pcMenuOffset;
+            GameControllerPrimaryFlagOffset = gameControllerPrimaryFlagOffset;
+            GameControllerSecondaryFlagOffset = gameControllerSecondaryFlagOffset;
+        }
+
+        public int LevelAreasArrayOffset { get; }
+        public int LevelControllerKeyOffset { get; }
+        public int PlayerDeadPlayerOffset { get; }
+        public int NetworkPlayerLocalPlayerOffset { get; }
+        public int FirstPersonControllerOffset { get; }
+        public int PcMenuOffset { get; }
+        public int GameControllerPrimaryFlagOffset { get; }
+        public int GameControllerSecondaryFlagOffset { get; }
+        public bool UsesNestedLocalPlayer => NetworkPlayerLocalPlayerOffset != 0;
+    }
+
     internal sealed class PhasmophobiaBuildProfile
     {
         public PhasmophobiaBuildProfile(
             string gameVersion,
-            string dumpFolderName,
             string gameAssemblySha256,
             int levelControllerTypeInfoRva,
             int mapControllerTypeInfoRva,
             int cctvControllerTypeInfoRva,
             int loadingControllerTypeInfoRva,
             int mainManagerTypeInfoRva,
-            int gameControllerTypeInfoRva)
+            int gameControllerTypeInfoRva,
+            PhasmophobiaMemoryLayout memoryLayout)
         {
             GameVersion = gameVersion;
-            DumpFolderName = dumpFolderName;
             GameAssemblySha256 = gameAssemblySha256;
             LevelControllerTypeInfoRva = levelControllerTypeInfoRva;
             MapControllerTypeInfoRva = mapControllerTypeInfoRva;
@@ -25,10 +57,10 @@ namespace LiveSplit.PhasmophobiaAutosplitter
             LoadingControllerTypeInfoRva = loadingControllerTypeInfoRva;
             MainManagerTypeInfoRva = mainManagerTypeInfoRva;
             GameControllerTypeInfoRva = gameControllerTypeInfoRva;
+            MemoryLayout = memoryLayout ?? throw new ArgumentNullException(nameof(memoryLayout));
         }
 
         public string GameVersion { get; }
-        public string DumpFolderName { get; }
         public string GameAssemblySha256 { get; }
         public int LevelControllerTypeInfoRva { get; }
         public int MapControllerTypeInfoRva { get; }
@@ -36,85 +68,58 @@ namespace LiveSplit.PhasmophobiaAutosplitter
         public int LoadingControllerTypeInfoRva { get; }
         public int MainManagerTypeInfoRva { get; }
         public int GameControllerTypeInfoRva { get; }
+        public PhasmophobiaMemoryLayout MemoryLayout { get; }
     }
 
     internal static class PhasmophobiaBuildProfiles
     {
-        public static readonly PhasmophobiaBuildProfile V0_16_0_0 = new PhasmophobiaBuildProfile(
-            gameVersion: "0.16.0.0",
-            dumpFolderName: "tools/phasmophobia_dump_0.16.0.0",
-            gameAssemblySha256: "5DEE1A72B060F4CC64BF69E500C7A9C2DE32AD919712B542B54BA25877A47D89",
-            levelControllerTypeInfoRva: 0x05D586A0,
-            mapControllerTypeInfoRva: 0x05D5FE60,
-            cctvControllerTypeInfoRva: 0x05D701F0,
-            loadingControllerTypeInfoRva: 0x05D5C1B0,
-            mainManagerTypeInfoRva: 0x05D5F6C8,
-            gameControllerTypeInfoRva: 0x05DB4D20);
+        public static readonly PhasmophobiaMemoryLayout Legacy016Layout = new PhasmophobiaMemoryLayout(
+            levelAreasArrayOffset: 0xA8,
+            levelControllerKeyOffset: 0xE0,
+            playerDeadPlayerOffset: 0xB8,
+            networkPlayerLocalPlayerOffset: 0,
+            firstPersonControllerOffset: 0x128,
+            pcMenuOffset: 0x150,
+            gameControllerPrimaryFlagOffset: 0xF8,
+            gameControllerSecondaryFlagOffset: 0xF9);
 
-        public static readonly PhasmophobiaBuildProfile V0_16_1_1 = new PhasmophobiaBuildProfile(
-            gameVersion: "0.16.1.1",
-            dumpFolderName: "tools/phasmophobia_dump_0.16.1.1",
-            gameAssemblySha256: "F4EB8A97A54D8F50F4000B4356AA4E6B74E6F528DF8808E1F92CD3928FD89D20",
-            levelControllerTypeInfoRva: 0x05CC6E78,
-            mapControllerTypeInfoRva: 0x05CCE640,
-            cctvControllerTypeInfoRva: 0x05CDE8F0,
-            loadingControllerTypeInfoRva: 0x05CCA988,
-            mainManagerTypeInfoRva: 0x05CCDEA8,
-            gameControllerTypeInfoRva: 0x05D232F8);
+        public static readonly PhasmophobiaMemoryLayout CurrentLayout = new PhasmophobiaMemoryLayout(
+            levelAreasArrayOffset: 0xB0,
+            levelControllerKeyOffset: 0xE8,
+            playerDeadPlayerOffset: 0xD8,
+            networkPlayerLocalPlayerOffset: 0x110,
+            firstPersonControllerOffset: 0x128,
+            pcMenuOffset: 0x130,
+            gameControllerPrimaryFlagOffset: 0x100,
+            gameControllerSecondaryFlagOffset: 0x101);
 
-        public static readonly PhasmophobiaBuildProfile V0_16_1_2 = new PhasmophobiaBuildProfile(
+        public static readonly PhasmophobiaBuildProfile Legacy01612 = new PhasmophobiaBuildProfile(
             gameVersion: "0.16.1.2",
-            dumpFolderName: "tools/phasmophobia_dump_0.16.1.2",
             gameAssemblySha256: "5B8FF13ADF4A758939B6EC7578177D3858DA2AE9CCB895E7D01C6FDA19504F60",
             levelControllerTypeInfoRva: 0x05CC4E78,
             mapControllerTypeInfoRva: 0x05CCC640,
             cctvControllerTypeInfoRva: 0x05CDC8F0,
             loadingControllerTypeInfoRva: 0x05CC8988,
             mainManagerTypeInfoRva: 0x05CCBEA8,
-            gameControllerTypeInfoRva: 0x05D212F8);
+            gameControllerTypeInfoRva: 0x05D212F8,
+            memoryLayout: Legacy016Layout);
 
-        public static readonly PhasmophobiaBuildProfile V0_17_0_0 = new PhasmophobiaBuildProfile(
-            gameVersion: "0.17.0.0",
-            dumpFolderName: "tools/phasmophobia_dump_0.17.0.0",
-            gameAssemblySha256: "D9C5C98009FAAE7AA98494C432DE39C2E99A931D48ABD4883D89DB5FE1F25328",
-            levelControllerTypeInfoRva: 0x0610AFF0,
-            mapControllerTypeInfoRva: 0x06112E20,
-            cctvControllerTypeInfoRva: 0x06120C20,
-            loadingControllerTypeInfoRva: 0x0610ECD8,
-            mainManagerTypeInfoRva: 0x06112668,
-            gameControllerTypeInfoRva: 0x06167AF8);
-
-        public static readonly PhasmophobiaBuildProfile V0_17_1_0 = new PhasmophobiaBuildProfile(
-            gameVersion: "0.17.1.0",
-            dumpFolderName: "tools/phasmophobia_dump_0.17.1.0",
-            gameAssemblySha256: "36B08D2714BC1E1ECB40D4695FF5C2A90E8DCEB617937266C61CFCF66DCC56C8",
-            levelControllerTypeInfoRva: 0x06240678,
-            mapControllerTypeInfoRva: 0x062488C8,
-            cctvControllerTypeInfoRva: 0x062566A0,
-            loadingControllerTypeInfoRva: 0x06244490,
-            mainManagerTypeInfoRva: 0x062480E8,
-            gameControllerTypeInfoRva: 0x0629DBA8);
-
-        public static readonly PhasmophobiaBuildProfile V0_17_1_2 = new PhasmophobiaBuildProfile(
-            gameVersion: "0.17.1.2",
-            dumpFolderName: "tools/phasmophobia_dump_0.17.1.2",
-            gameAssemblySha256: "7DCB6BA48602A5CE7045454D7E12DDB4D54F564EFACD8713EF9DAF73FAE2FEB0",
-            levelControllerTypeInfoRva: 0x0622AA78,
-            mapControllerTypeInfoRva: 0x06232CC8,
-            cctvControllerTypeInfoRva: 0x06240C70,
-            loadingControllerTypeInfoRva: 0x0622E898,
-            mainManagerTypeInfoRva: 0x062324E8,
-            gameControllerTypeInfoRva: 0x062883D0);
+        public static readonly PhasmophobiaBuildProfile Current = new PhasmophobiaBuildProfile(
+            gameVersion: "0.19.0.0",
+            gameAssemblySha256: "4CBB1C067A167B31DDAA808C3B4B9A3AEC7824F8D6863C9D2D28872244EA644B",
+            levelControllerTypeInfoRva: 0x064106B8,
+            mapControllerTypeInfoRva: 0x064190D8,
+            cctvControllerTypeInfoRva: 0x06425EB0,
+            loadingControllerTypeInfoRva: 0x064146C8,
+            mainManagerTypeInfoRva: 0x06418868,
+            gameControllerTypeInfoRva: 0x06471B98,
+            memoryLayout: CurrentLayout);
 
         private static readonly Dictionary<string, PhasmophobiaBuildProfile> ProfilesByGameAssemblySha256 =
             new Dictionary<string, PhasmophobiaBuildProfile>(StringComparer.OrdinalIgnoreCase)
             {
-                [V0_16_0_0.GameAssemblySha256] = V0_16_0_0,
-                [V0_16_1_1.GameAssemblySha256] = V0_16_1_1,
-                [V0_16_1_2.GameAssemblySha256] = V0_16_1_2,
-                [V0_17_0_0.GameAssemblySha256] = V0_17_0_0,
-                [V0_17_1_0.GameAssemblySha256] = V0_17_1_0,
-                [V0_17_1_2.GameAssemblySha256] = V0_17_1_2,
+                [Legacy01612.GameAssemblySha256] = Legacy01612,
+                [Current.GameAssemblySha256] = Current,
             };
 
         public static PhasmophobiaBuildProfile FindByGameAssemblySha256(string gameAssemblySha256)

@@ -3,6 +3,7 @@ using LiveSplit.UI;
 using LiveSplit.UI.Components;
 using System;
 using System.ComponentModel;
+using System.Threading.Tasks;
 using System.Windows.Forms;
 using Voxif.AutoSplitter;
 using Voxif.IO;
@@ -31,7 +32,39 @@ namespace LiveSplit.PhasmophobiaAutosplitter
 
             settings = new PhasmophobiaSettings(state);
             memory = new PhasmophobiaMemory(logger, settings);
+            memory.OnUnsupportedBuildWarning = ShowUnsupportedBuildWarning;
+            memory.OnCompatibilityResult = ShowCompatibilityResult;
             logger?.Log("Component version: " + Factory.ExAssembly.GetName().Version);
+        }
+
+        private static void ShowUnsupportedBuildWarning(string assemblyHash)
+        {
+            Task.Run(() => MessageBox.Show(
+                "This is not a supported Phasmophobia build version.\n\n"
+                + "The autosplitter will run a safe background compatibility check. "
+                + "It will remain disabled if the expected memory layout cannot be validated. "
+                + "Even if validation succeeds, autosplitter behavior may fail if the game changed relevant fields.\n\n"
+                + "GameAssembly SHA256:\n" + assemblyHash,
+                "Phasmophobia Autosplitter - Unsupported Build",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Warning,
+                MessageBoxDefaultButton.Button1,
+                MessageBoxOptions.DefaultDesktopOnly));
+        }
+
+        private static void ShowCompatibilityResult(bool success, string details)
+        {
+            Task.Run(() => MessageBox.Show(
+                success
+                    ? "Compatibility check succeeded.\n\n" + details
+                    : "Compatibility check failed safely. The autosplitter will remain disabled for this game process.\n\n" + details,
+                success
+                    ? "Phasmophobia Autosplitter - Compatibility Succeeded"
+                    : "Phasmophobia Autosplitter - Compatibility Failed",
+                MessageBoxButtons.OK,
+                success ? MessageBoxIcon.Information : MessageBoxIcon.Warning,
+                MessageBoxDefaultButton.Button1,
+                MessageBoxOptions.DefaultDesktopOnly));
         }
 
         public override bool Update()

@@ -286,11 +286,10 @@ namespace LiveSplit.PhasmophobiaAutosplitter
             {
                 AutoSize = false,
                 Dock = DockStyle.Fill,
-                Text = "- Leaving the truck and re-entering WILL be treated as a split.\n"
-                     + "- Start Split Behavior can be stuck starting the timer and not reset at the lobby.\n"
+                Text = "- Re-Entering and Staying Inside the Truck WILL be Treated as a Split and Not Reset.\n"
                      + "- Multiplayer memory state can be unreliable and may cause missed or duplicate behavior.\n"
-                     + "- Load-removal timing is not perfect, quitting out to lobby wont start the timer until Singleplayer/Multiplayer is selected again\n"
-                     + "- Game updates can change memory structures and break detection until offsets are updated.\n"
+                     + "- Load-removal timing is not perfect, quitting out to lobby wont unpause the timer until Singleplayer/Multiplayer is selected again\n"
+                     + "- Unsupported Builds only try and Breif an Safe Lookup, most Build other then 0.16.1.2 and 0.19.0.0 Will Not Work.\n"
                      + "- Restarting the game can rarely desync detection; reload the component or restart LiveSplit.",
                 Margin = new Padding(0),
                 TextAlign = ContentAlignment.TopLeft

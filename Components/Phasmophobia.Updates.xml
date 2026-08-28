@@ -103,4 +103,13 @@
             <change>Kept version-aware profile selection with dynamic fallback for shifted builds.</change>
         </changelog>
     </update>
+    <update version="1.0.16.0">
+        <files>
+            <file path="Components/LiveSplit.PhasmophobiaAutosplitter.dll" status="changed"/>
+        </files>
+        <changelog>
+            <change>The Autosplitter now ONLY Supports 0.16.1.2 and 0.19.0.0 Directly</change>
+            <change>Version Lookup will now Warn if Unsupported and Try and Brief Dynamic Lookup and will Prevent Crashing Livesplit</change>
+        </changelog>
+    </update>
 </updates>
