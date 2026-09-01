@@ -1,6 +1,6 @@
 # LiveSplit Phasmophobia Autosplitter
 
-## This may be discontinued in the Future, 0.16.1.2 and 0.19.0.0 Are Full Working and Tested on those Exact Builds, Future Updates Will Break the Autosplitter Especially if it Switches to Unity 6.
+## This may be discontinued in the Future, 0.16.1.2 and 0.19.0.0 Are Full Working and Tested on those Exact Builds, Future Updates Will Break the Autosplitter Especially if it Switches to Unity 6, but now it will safely fail and not crash livesplit.
 
 ## Description
 
