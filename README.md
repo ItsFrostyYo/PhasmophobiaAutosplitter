@@ -1,6 +1,6 @@
 # LiveSplit Phasmophobia Autosplitter
 
-## This may be discontinued in the Future, 0.16.1.2 and 0.19.0.0 Are Full Working and Tested on those Exact Builds, Future Updates Will Break the Autosplitter Especially if it Switches to Unity 6, but now it will safely fail and not crash livesplit.
+## This may be discontinued in the Future, 0.16.1.2, 0.19.0.0 and 0.19.0.1 Are Full Working and Tested on those Exact Builds, Future Updates Will Break the Autosplitter Especially if it Switches to Unity 6, but now it will safely fail and not crash livesplit.
 
 ## Description
 
@@ -17,15 +17,14 @@ Github for the Phasmophobia Autosplitter - https://github.com/ItsFrostyYo/Phasmo
 - Load Time Removal for Game Time between contract transitions.
 
 ## Supported game
-- Supported Phasmophobia versions: `0.16.1.2` and `0.19.0.0`.
+- Supported Phasmophobia versions: `0.16.1.2`, `0.19.0.0`, and `0.19.0.1`.
 - The autosplitter verifies the exact `GameAssembly.dll` build before reading memory.
 - Unknown future builds show a warning and run one non-blocking compatibility lookup.
 - Dynamic results must match all required controllers and pass repeated memory-layout validation before automation is enabled.
 - Failed or incompatible lookups leave the autosplitter safely disabled without blocking LiveSplit or reading through unvalidated pointers.
 
-## Update `1.0.16.0`
-- The Autosplitter now ONLY Supports 0.16.1.2 and 0.19.0.0 Directly
-- Version Lookup will now Warn if Unsupported and Try and Brief Dynamic Lookup and will Prevent Crashing Livesplit
+## Update `1.0.17.0`
+- Added direct support for Phasmophobia `0.19.0.1`.
 
 ## How to use
 1. Open LiveSplit.
@@ -62,7 +61,7 @@ Uses LiveSplit reset confirmation when the current run has a gold split.
 - Re-Entering and Staying Inside the Truck WILL be Treated as a Split and Not Reset.
 - Multiplayer memory state can be unreliable and may cause missed or duplicate behavior.
 - Load-removal timing is not perfect, quitting out to lobby wont unpause the timer until Singleplayer/Multiplayer is selected again
-- Unsupported Builds only try and Breif an Safe Lookup, most Build other then 0.16.1.2 and 0.19.0.0 Will Not Work.
+- Unsupported builds only try a brief safe lookup; most builds other than the explicitly supported versions will not work.
 - Restarting the game can rarely desync detection; reload the component or restart LiveSplit.
 
 ## Contributing

@@ -104,7 +104,7 @@ namespace LiveSplit.PhasmophobiaAutosplitter
             gameControllerTypeInfoRva: 0x05D212F8,
             memoryLayout: Legacy016Layout);
 
-        public static readonly PhasmophobiaBuildProfile Current = new PhasmophobiaBuildProfile(
+        public static readonly PhasmophobiaBuildProfile V01900 = new PhasmophobiaBuildProfile(
             gameVersion: "0.19.0.0",
             gameAssemblySha256: "4CBB1C067A167B31DDAA808C3B4B9A3AEC7824F8D6863C9D2D28872244EA644B",
             levelControllerTypeInfoRva: 0x064106B8,
@@ -115,10 +115,22 @@ namespace LiveSplit.PhasmophobiaAutosplitter
             gameControllerTypeInfoRva: 0x06471B98,
             memoryLayout: CurrentLayout);
 
+        public static readonly PhasmophobiaBuildProfile Current = new PhasmophobiaBuildProfile(
+            gameVersion: "0.19.0.1",
+            gameAssemblySha256: "C0C2F30492884000C3079440FE5F4F9375F541F22F70F6546CA4D1DBF3175848",
+            levelControllerTypeInfoRva: 0x064A9B00,
+            mapControllerTypeInfoRva: 0x064B25F0,
+            cctvControllerTypeInfoRva: 0x064BF3D8,
+            loadingControllerTypeInfoRva: 0x064ADBE8,
+            mainManagerTypeInfoRva: 0x064B1D80,
+            gameControllerTypeInfoRva: 0x0650AA40,
+            memoryLayout: CurrentLayout);
+
         private static readonly Dictionary<string, PhasmophobiaBuildProfile> ProfilesByGameAssemblySha256 =
             new Dictionary<string, PhasmophobiaBuildProfile>(StringComparer.OrdinalIgnoreCase)
             {
                 [Legacy01612.GameAssemblySha256] = Legacy01612,
+                [V01900.GameAssemblySha256] = V01900,
                 [Current.GameAssemblySha256] = Current,
             };
 

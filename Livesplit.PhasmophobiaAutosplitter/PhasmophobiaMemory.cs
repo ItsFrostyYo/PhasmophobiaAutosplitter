@@ -1102,7 +1102,7 @@ namespace LiveSplit.PhasmophobiaAutosplitter
             unsupportedBuild = false;
             dynamicLookupCandidate = null;
             dynamicValidationFrames = 0;
-            logger?.Log("Compatibility validation passed. Autosplitter enabled using the current 0.19.0.0 memory layout.");
+            logger?.Log("Compatibility validation passed. Autosplitter enabled using the latest known memory layout.");
             OnVersionDetected?.Invoke("Compatible Unknown Build");
             OnCompatibilityResult?.Invoke(true,
                 "The required controller classes and current memory layout were validated. Automation has been enabled for this process.");
