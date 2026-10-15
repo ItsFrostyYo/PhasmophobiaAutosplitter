@@ -4,6 +4,7 @@ using System.Security.Cryptography;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using Voxif.AutoSplitter;
+using Voxif.Helpers.MemoryScan;
 using System.Linq;
 using Voxif.IO;
 using Voxif.Memory;
@@ -44,8 +45,18 @@ namespace LiveSplit.PhasmophobiaAutosplitter
         private const int PhotonViewIsMineOffset = 0x68;
         private const int MainManagerServerManagerOffset = 0x50;
         private const int MainManagerLevelSelectionManagerOffset = 0x58;
+        private const int ServerManagerDebriefingViewOffset = 0x30;
         private const int ServerManagerLeaveButtonOffset = 0xD0;
         private const int ServerManagerStartGameButtonOffset = 0xE8;
+        private const int UiContainerVisibilityStateOffset = 0x58;
+        private const int UiContainerVisibleState = 0;
+        private const int LoadingControllerPcLoadingCanvasOffset = 0x20;
+        private const int LoadingControllerPcLoadingFadeOffset = 0x28;
+        private const int UnityObjectCachedPtrOffset = 0x10;
+        private const int NativeGameObjectActiveSelfOffset = 0x56;
+        private const int UnityTimeFrameCountOffset = 0xC8;
+        private const int UnityTimeRenderedFrameCountOffset = 0xD0;
+        private const int RenderedFramesAfterOverlayRequired = 2;
         private const int SelectableInteractableOffset = 0xD8;
         private const int SelectableEnableCalledOffset = 0x20;
         private const int SelectableIsPointerDownOffset = 0xF1;
@@ -80,6 +91,7 @@ namespace LiveSplit.PhasmophobiaAutosplitter
         private IntPtr loadingControllerStaticAddress;
         private IntPtr mainManagerStaticAddress;
         private IntPtr gameControllerStaticAddress;
+        private IntPtr renderedFrameCountAddress;
 
         private bool keySpawnedOld;
         private bool keySpawnedNew;
@@ -97,6 +109,12 @@ namespace LiveSplit.PhasmophobiaAutosplitter
         private bool loadingFlagOld;
         private bool loadingFlagNew;
         private bool loadingSignalAvailable;
+        private bool loadingCanvasActiveOld;
+        private bool loadingCanvasActiveNew;
+        private bool loadingCanvasActiveAvailable;
+        private bool loadingFadeActiveOld;
+        private bool loadingFadeActiveNew;
+        private bool loadingFadeActiveAvailable;
         private bool startArmedForMapLoad;
         private bool sawTruckKeySinceStart;
         private bool truckLoadedStartEdge;
@@ -136,6 +154,8 @@ namespace LiveSplit.PhasmophobiaAutosplitter
         private bool leaveLobbyButtonInteractableNew;
         private bool contractBoardAvailableOld;
         private bool contractBoardAvailableNew;
+        private int debriefingViewVisibilityOld = -1;
+        private int debriefingViewVisibilityNew = -1;
         private bool gameControllerFlagF8Old;
         private bool gameControllerFlagF8New;
         private bool gameControllerFlagF9Old;
@@ -159,7 +179,12 @@ namespace LiveSplit.PhasmophobiaAutosplitter
         private DateTime loadRemovalInLobbySinceUtc = DateTime.MinValue;
         private DateTime loadRemovalFirstPauseStartUtc = DateTime.MinValue;
         private int loadRemovalLobbyReadyConsecutiveFrames;
-        private bool loadRemovalFirstLoadingSawStartHidden;
+        private bool loadRemovalFirstLoadingSawDebriefHidden;
+        private bool loadRemovalFirstLoadingSawFadeActive;
+        private bool loadRemovalFirstLoadingRenderReleaseArmed;
+        private int loadRemovalFirstLoadingRenderBaseline;
+        private int renderedFrameCountNew;
+        private bool renderedFrameCountAvailable;
         private int loadRemovalSecondLoadingInLevelNotLoadingCount;
         private bool loadRemovalSecondLoadingSawLoading;
         public bool pointersInitialized;
@@ -199,6 +224,7 @@ namespace LiveSplit.PhasmophobiaAutosplitter
                 loadingControllerStaticAddress = IntPtr.Zero;
                 mainManagerStaticAddress = IntPtr.Zero;
                 gameControllerStaticAddress = IntPtr.Zero;
+                renderedFrameCountAddress = IntPtr.Zero;
                 activeBuildProfile = null;
                 activeGameAssemblySha256 = null;
                 activeGameAssemblyPath = null;
@@ -288,7 +314,10 @@ namespace LiveSplit.PhasmophobiaAutosplitter
                 loadRemovalSecondPauseStartUtc = DateTime.MinValue;
                 loadRemovalInLobbySinceUtc = DateTime.MinValue;
                 loadRemovalLobbyReadyConsecutiveFrames = 0;
-                loadRemovalFirstLoadingSawStartHidden = false;
+                loadRemovalFirstLoadingSawDebriefHidden = false;
+                loadRemovalFirstLoadingSawFadeActive = false;
+                loadRemovalFirstLoadingRenderReleaseArmed = false;
+                loadRemovalFirstLoadingRenderBaseline = 0;
                 loadRemovalSecondLoadingInLevelNotLoadingCount = 0;
                 loadRemovalSecondLoadingSawLoading = false;
 
@@ -380,7 +409,10 @@ namespace LiveSplit.PhasmophobiaAutosplitter
                 loadRemovalState = LoadRemovalState.FirstLoading;
                 loadRemovalFirstPauseStartUtc = DateTime.UtcNow;
                 loadRemovalLobbyReadyConsecutiveFrames = 0;
-                loadRemovalFirstLoadingSawStartHidden = false;
+                loadRemovalFirstLoadingSawDebriefHidden = false;
+                loadRemovalFirstLoadingSawFadeActive = false;
+                loadRemovalFirstLoadingRenderReleaseArmed = false;
+                loadRemovalFirstLoadingRenderBaseline = 0;
                 logger?.Log("Load removal: split -> pausing for load");
             }
             logger?.Log("Split fired");
@@ -417,7 +449,10 @@ namespace LiveSplit.PhasmophobiaAutosplitter
             loadRemovalSecondPauseStartUtc = DateTime.MinValue;
             loadRemovalInLobbySinceUtc = DateTime.MinValue;
             loadRemovalLobbyReadyConsecutiveFrames = 0;
-            loadRemovalFirstLoadingSawStartHidden = false;
+            loadRemovalFirstLoadingSawDebriefHidden = false;
+            loadRemovalFirstLoadingSawFadeActive = false;
+            loadRemovalFirstLoadingRenderReleaseArmed = false;
+            loadRemovalFirstLoadingRenderBaseline = 0;
             loadRemovalSecondLoadingInLevelNotLoadingCount = 0;
             loadRemovalSecondLoadingSawLoading = false;
 
@@ -529,7 +564,10 @@ namespace LiveSplit.PhasmophobiaAutosplitter
             loadRemovalSecondPauseStartUtc = DateTime.MinValue;
             loadRemovalInLobbySinceUtc = DateTime.MinValue;
             loadRemovalLobbyReadyConsecutiveFrames = 0;
-            loadRemovalFirstLoadingSawStartHidden = false;
+            loadRemovalFirstLoadingSawDebriefHidden = false;
+            loadRemovalFirstLoadingSawFadeActive = false;
+            loadRemovalFirstLoadingRenderReleaseArmed = false;
+            loadRemovalFirstLoadingRenderBaseline = 0;
             loadRemovalSecondLoadingInLevelNotLoadingCount = 0;
             loadRemovalSecondLoadingSawLoading = false;
             localPlayerMissingInContractFrames = 0;
@@ -570,7 +608,10 @@ namespace LiveSplit.PhasmophobiaAutosplitter
                 loadRemovalSecondPauseStartUtc = DateTime.MinValue;
                 loadRemovalInLobbySinceUtc = DateTime.MinValue;
                 loadRemovalLobbyReadyConsecutiveFrames = 0;
-                loadRemovalFirstLoadingSawStartHidden = false;
+                loadRemovalFirstLoadingSawDebriefHidden = false;
+                loadRemovalFirstLoadingSawFadeActive = false;
+                loadRemovalFirstLoadingRenderReleaseArmed = false;
+                loadRemovalFirstLoadingRenderBaseline = 0;
                 loadRemovalSecondLoadingInLevelNotLoadingCount = 0;
                 loadRemovalSecondLoadingSawLoading = false;
                 return;
@@ -580,7 +621,10 @@ namespace LiveSplit.PhasmophobiaAutosplitter
                 loadRemovalInLobbySinceUtc = DateTime.MinValue;
                 loadRemovalFirstPauseStartUtc = DateTime.MinValue;
                 loadRemovalLobbyReadyConsecutiveFrames = 0;
-                loadRemovalFirstLoadingSawStartHidden = false;
+                loadRemovalFirstLoadingSawDebriefHidden = false;
+                loadRemovalFirstLoadingSawFadeActive = false;
+                loadRemovalFirstLoadingRenderReleaseArmed = false;
+                loadRemovalFirstLoadingRenderBaseline = 0;
                 loadRemovalSecondLoadingInLevelNotLoadingCount = 0;
                 loadRemovalSecondLoadingSawLoading = false;
                 return;
@@ -606,8 +650,10 @@ namespace LiveSplit.PhasmophobiaAutosplitter
                     loadRemovalFirstPauseStartUtc = DateTime.UtcNow;
                 TimeSpan firstLoadingDuration = DateTime.UtcNow - loadRemovalFirstPauseStartUtc;
 
-                if (!startGameButtonEnabledNew)
-                    loadRemovalFirstLoadingSawStartHidden = true;
+                if (debriefingViewVisibilityNew != UiContainerVisibleState)
+                    loadRemovalFirstLoadingSawDebriefHidden = true;
+                if (loadingFadeActiveAvailable && loadingFadeActiveNew)
+                    loadRemovalFirstLoadingSawFadeActive = true;
                 bool gameControllerStartEdge =
                     (!gameControllerFlagF8Old && gameControllerFlagF8New)
                     || (!gameControllerFlagF9Old && gameControllerFlagF9New);
@@ -625,41 +671,66 @@ namespace LiveSplit.PhasmophobiaAutosplitter
                     loadRemovalState = LoadRemovalState.None;
                     loadRemovalFirstPauseStartUtc = DateTime.MinValue;
                     loadRemovalLobbyReadyConsecutiveFrames = 0;
-                    loadRemovalFirstLoadingSawStartHidden = false;
+                    loadRemovalFirstLoadingSawDebriefHidden = false;
+                    loadRemovalFirstLoadingSawFadeActive = false;
+                    loadRemovalFirstLoadingRenderReleaseArmed = false;
+                    loadRemovalFirstLoadingRenderBaseline = 0;
                     logger?.Log("Load removal: contract started while paused -> unpause");
                     return;
                 }
 
-                bool lobbyReadyByStartSignal =
-                    loadRemovalFirstLoadingSawStartHidden
-                    && startGameButtonEnabledNew
-                    && !startGameButtonInteractableNew
+                // The Start button and LoadingController flag become ready while the
+                // black loading overlay is still covering the lobby. The debrief view
+                // reaches Doozy's final Visible state only when the post-contract UI
+                // is actually being presented.
+                bool debriefViewReady =
+                    loadRemovalFirstLoadingSawDebriefHidden
+                    && debriefingViewVisibilityNew == UiContainerVisibleState
                     && !loadingActive;
+                bool visualLoadingOverlayGone =
+                    !loadRemovalFirstLoadingSawFadeActive
+                    || (loadingFadeActiveAvailable && !loadingFadeActiveNew);
 
-                bool lobbyReady = lobbyReadyByStartSignal;
+                bool visualOverlayStateCleared = debriefViewReady && visualLoadingOverlayGone;
+                if (visualOverlayStateCleared
+                    && renderedFrameCountAvailable
+                    && !loadRemovalFirstLoadingRenderReleaseArmed)
+                {
+                    // Unity changes the loading objects before presenting the next
+                    // frame. Wait for frames rendered after that change so the old
+                    // black Initializing frame cannot release game time early.
+                    loadRemovalFirstLoadingRenderReleaseArmed = true;
+                    loadRemovalFirstLoadingRenderBaseline = renderedFrameCountNew;
+                    LogDiagnostic("Load removal: loading overlay cleared internally; waiting for a presented lobby frame");
+                }
+
+                bool lobbyFramePresented =
+                    loadRemovalFirstLoadingRenderReleaseArmed
+                    && renderedFrameCountAvailable
+                    && unchecked(renderedFrameCountNew - loadRemovalFirstLoadingRenderBaseline)
+                        >= RenderedFramesAfterOverlayRequired;
+                bool lobbyReady = visualOverlayStateCleared && lobbyFramePresented;
                 if (lobbyReady)
                     loadRemovalLobbyReadyConsecutiveFrames++;
                 else
                     loadRemovalLobbyReadyConsecutiveFrames = 0;
 
-                bool conservativeFallbackReady = !loadingActive
-                    && levelController == IntPtr.Zero
-                    && firstLoadingDuration >= TimeSpan.FromSeconds(9.0);
-                bool hardTimeout = firstLoadingDuration >= TimeSpan.FromSeconds(15.0);
+                bool hardTimeout = firstLoadingDuration >= TimeSpan.FromSeconds(25.0);
 
-                if (loadRemovalLobbyReadyConsecutiveFrames >= 2 || conservativeFallbackReady || hardTimeout)
+                if (loadRemovalLobbyReadyConsecutiveFrames >= 2 || hardTimeout)
                 {
-                    string firstLoadReleaseReason = "start-visible-noninteractable";
-                    if (hardTimeout)
-                        firstLoadReleaseReason = "hard-timeout";
-                    else if (conservativeFallbackReady)
-                        firstLoadReleaseReason = "conservative-fallback";
+                    string firstLoadReleaseReason = hardTimeout
+                        ? "hard-timeout"
+                        : "loading-overlay-rendered-away";
 
                     loadRemovalState = LoadRemovalState.InLobby;
                     loadRemovalInLobbySinceUtc = DateTime.UtcNow;
                     loadRemovalFirstPauseStartUtc = DateTime.MinValue;
                     loadRemovalLobbyReadyConsecutiveFrames = 0;
-                    loadRemovalFirstLoadingSawStartHidden = false;
+                    loadRemovalFirstLoadingSawDebriefHidden = false;
+                    loadRemovalFirstLoadingSawFadeActive = false;
+                    loadRemovalFirstLoadingRenderReleaseArmed = false;
+                    loadRemovalFirstLoadingRenderBaseline = 0;
                     logger?.Log("Load removal: loading done -> lobby/board"
                         + " reason=" + firstLoadReleaseReason
                         + " durationMs=" + ((int)firstLoadingDuration.TotalMilliseconds));
@@ -820,6 +891,9 @@ namespace LiveSplit.PhasmophobiaAutosplitter
                 IntPtr gameAssemblyBase = GetGameAssemblyBaseAddress();
                 if (gameAssemblyBase == IntPtr.Zero)
                     return;
+
+                if (renderedFrameCountAddress == IntPtr.Zero)
+                    TryResolveRenderedFrameCountAddress();
 
                 if (activeBuildProfile != null)
                 {
@@ -1098,6 +1172,8 @@ namespace LiveSplit.PhasmophobiaAutosplitter
             loadingControllerStaticAddress = result.StaticBases["LoadingController"] + SingletonStaticFieldOffset;
             mainManagerStaticAddress = result.StaticBases["MainManager"] + SingletonStaticFieldOffset;
             gameControllerStaticAddress = result.StaticBases["GameController"] + SingletonStaticFieldOffset;
+            if (renderedFrameCountAddress == IntPtr.Zero)
+                TryResolveRenderedFrameCountAddress();
             pointersInitialized = true;
             unsupportedBuild = false;
             dynamicLookupCandidate = null;
@@ -1181,6 +1257,46 @@ namespace LiveSplit.PhasmophobiaAutosplitter
             }
 
             return module.BaseAddress;
+        }
+
+        private void TryResolveRenderedFrameCountAddress()
+        {
+            try
+            {
+                var unityPlayer = game.Process.Modules().FirstOrDefault(m =>
+                    m.ModuleName.Equals("UnityPlayer.dll", StringComparison.OrdinalIgnoreCase));
+                if (unityPlayer == null)
+                    return;
+
+                // Unity's adjacent frameCount/renderedFrameCount accessors. Resolving
+                // this native singleton dynamically avoids a UnityPlayer build RVA.
+                const string signature =
+                    "48 8B 05 ?? ?? ?? ?? 8B 80 C8 00 00 00 C3 CC CC "
+                    + "48 8B 05 ?? ?? ?? ?? 8B 80 D0 00 00 00 C3";
+                int scanSize = Math.Min(unityPlayer.ModuleMemorySize, 8 * 1024 * 1024);
+                var scanner = new SignatureScanner(game, unityPlayer.BaseAddress, scanSize);
+                IntPtr accessor = scanner.Scan(new ScanTarget(0, signature));
+                if (accessor == IntPtr.Zero)
+                    return;
+
+                int relativeOffset = game.Read<int>(accessor + 3);
+                IntPtr timeManagerSlot = accessor + 7 + relativeOffset;
+                IntPtr timeManager = game.Read<IntPtr>(timeManagerSlot);
+                if (timeManager == IntPtr.Zero)
+                    return;
+
+                int frameCount = game.Read<int>(timeManager + UnityTimeFrameCountOffset);
+                int renderedFrameCount = game.Read<int>(timeManager + UnityTimeRenderedFrameCountOffset);
+                if (frameCount < 0 || renderedFrameCount < 0 || renderedFrameCount > frameCount + 1)
+                    return;
+
+                renderedFrameCountAddress = timeManager + UnityTimeRenderedFrameCountOffset;
+                LogDiagnostic("Rendered-frame load guard initialized");
+            }
+            catch (Exception ex)
+            {
+                LogDiagnostic("Rendered-frame load guard unavailable: " + ex.Message);
+            }
         }
 
         private string GetGameAssemblyFilePath()
@@ -1275,6 +1391,29 @@ namespace LiveSplit.PhasmophobiaAutosplitter
                 return false;
 
             return game.Read<bool>(selectablePointer + SelectableEnableCalledOffset);
+        }
+
+        private int ReadUiContainerVisibility(IntPtr viewPointer)
+        {
+            if (viewPointer == IntPtr.Zero || game == null)
+                return -1;
+
+            int state = game.Read<int>(viewPointer + UiContainerVisibilityStateOffset);
+            return state >= 0 && state <= 3 ? state : -1;
+        }
+
+        private bool ReadGameObjectActiveSelf(IntPtr gameObjectPointer, out bool available)
+        {
+            available = false;
+            if (gameObjectPointer == IntPtr.Zero || game == null)
+                return false;
+
+            IntPtr nativeObject = game.Read<IntPtr>(gameObjectPointer + UnityObjectCachedPtrOffset);
+            if (nativeObject == IntPtr.Zero)
+                return false;
+
+            available = true;
+            return game.Read<bool>(nativeObject + NativeGameObjectActiveSelfOffset);
         }
 
         private IntPtr ReadLocalPlayerFromList(IntPtr listPointer)
@@ -1601,12 +1740,30 @@ namespace LiveSplit.PhasmophobiaAutosplitter
             }
 
             loadingFlagOld = loadingFlagNew;
+            loadingCanvasActiveOld = loadingCanvasActiveNew;
+            loadingFadeActiveOld = loadingFadeActiveNew;
+            renderedFrameCountAvailable = renderedFrameCountAddress != IntPtr.Zero;
+            if (renderedFrameCountAvailable)
+                renderedFrameCountNew = game.Read<int>(renderedFrameCountAddress);
             loadingFlagNew = false;
             loadingSignalAvailable = loadingController != IntPtr.Zero;
+            loadingCanvasActiveNew = false;
+            loadingCanvasActiveAvailable = false;
+            loadingFadeActiveNew = false;
+            loadingFadeActiveAvailable = false;
             if (loadingSignalAvailable)
             {
                 loadingFlagNew = game.Read<bool>(loadingController + 0x30); // LoadingController loading flag candidate
+                IntPtr loadingCanvas = game.Read<IntPtr>(loadingController + LoadingControllerPcLoadingCanvasOffset);
+                IntPtr loadingFade = game.Read<IntPtr>(loadingController + LoadingControllerPcLoadingFadeOffset);
+                loadingCanvasActiveNew = ReadGameObjectActiveSelf(loadingCanvas, out loadingCanvasActiveAvailable);
+                loadingFadeActiveNew = ReadGameObjectActiveSelf(loadingFade, out loadingFadeActiveAvailable);
             }
+
+            if (loadingCanvasActiveOld != loadingCanvasActiveNew)
+                LogDiagnostic("Loading canvas active edge (" + loadingCanvasActiveOld + " -> " + loadingCanvasActiveNew + ")");
+            if (loadingFadeActiveOld != loadingFadeActiveNew)
+                logger?.Log("Loading fade active edge (" + loadingFadeActiveOld + " -> " + loadingFadeActiveNew + ")");
 
             startGameButtonDownOld = startGameButtonDownNew;
             leaveLobbyButtonDownOld = leaveLobbyButtonDownNew;
@@ -1615,6 +1772,7 @@ namespace LiveSplit.PhasmophobiaAutosplitter
             startGameButtonInteractableOld = startGameButtonInteractableNew;
             leaveLobbyButtonInteractableOld = leaveLobbyButtonInteractableNew;
             contractBoardAvailableOld = contractBoardAvailableNew;
+            debriefingViewVisibilityOld = debriefingViewVisibilityNew;
             gameControllerFlagF8Old = gameControllerFlagF8New;
             gameControllerFlagF9Old = gameControllerFlagF9New;
             startGameButtonDownNew = false;
@@ -1624,6 +1782,7 @@ namespace LiveSplit.PhasmophobiaAutosplitter
             startGameButtonInteractableNew = false;
             leaveLobbyButtonInteractableNew = false;
             contractBoardAvailableNew = false;
+            debriefingViewVisibilityNew = -1;
             gameControllerFlagF8New = false;
             gameControllerFlagF9New = false;
             IntPtr mainManager = ReadSingletonInstance(mainManagerStaticAddress);
@@ -1632,8 +1791,10 @@ namespace LiveSplit.PhasmophobiaAutosplitter
                 IntPtr serverManager = game.Read<IntPtr>(mainManager + MainManagerServerManagerOffset);
                 if (serverManager != IntPtr.Zero)
                 {
+                    IntPtr debriefingView = game.Read<IntPtr>(serverManager + ServerManagerDebriefingViewOffset);
                     IntPtr leaveButton = game.Read<IntPtr>(serverManager + ServerManagerLeaveButtonOffset);
                     IntPtr startButton = game.Read<IntPtr>(serverManager + ServerManagerStartGameButtonOffset);
+                    debriefingViewVisibilityNew = ReadUiContainerVisibility(debriefingView);
                     leaveLobbyButtonDownNew = ReadSelectablePointerDown(leaveButton);
                     startGameButtonDownNew = ReadSelectablePointerDown(startButton);
                     leaveLobbyButtonEnabledNew = ReadSelectableEnableCalled(leaveButton);
@@ -1684,6 +1845,11 @@ namespace LiveSplit.PhasmophobiaAutosplitter
             {
                 LogDiagnostic("ContractBoard availability edge ("
                     + contractBoardAvailableOld + " -> " + contractBoardAvailableNew + ")");
+            }
+            if (debriefingViewVisibilityOld != debriefingViewVisibilityNew)
+            {
+                LogDiagnostic("Debriefing view state edge ("
+                    + debriefingViewVisibilityOld + " -> " + debriefingViewVisibilityNew + ")");
             }
             if (gameControllerFlagF8Old != gameControllerFlagF8New)
             {
@@ -1944,7 +2110,10 @@ namespace LiveSplit.PhasmophobiaAutosplitter
                         loadRemovalState = LoadRemovalState.FirstLoading;
                         loadRemovalFirstPauseStartUtc = DateTime.UtcNow;
                         loadRemovalLobbyReadyConsecutiveFrames = 0;
-                        loadRemovalFirstLoadingSawStartHidden = false;
+                        loadRemovalFirstLoadingSawDebriefHidden = false;
+                        loadRemovalFirstLoadingSawFadeActive = false;
+                        loadRemovalFirstLoadingRenderReleaseArmed = false;
+                        loadRemovalFirstLoadingRenderBaseline = 0;
                         loadRemovalSecondPauseStartUtc = DateTime.MinValue;
                         loadRemovalInLobbySinceUtc = DateTime.MinValue;
                         loadRemovalSecondLoadingInLevelNotLoadingCount = 0;
@@ -2127,5 +2296,3 @@ namespace LiveSplit.PhasmophobiaAutosplitter
         }
     }
 }
-
-

@@ -128,4 +128,12 @@
             <change>Added direct support for Phasmophobia 0.19.1.0 while preserving support for the existing build profiles.</change>
         </changelog>
     </update>
+    <update version="1.0.19.0">
+        <files>
+            <file path="Components/LiveSplit.PhasmophobiaAutosplitter.dll" status="changed"/>
+        </files>
+        <changelog>
+            <change>Improved post-contract load removal so game time resumes after the loading overlay has actually been rendered away.</change>
+        </changelog>
+    </update>
 </updates>

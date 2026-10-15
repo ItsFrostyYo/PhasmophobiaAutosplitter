@@ -23,8 +23,8 @@ Github for the Phasmophobia Autosplitter - https://github.com/ItsFrostyYo/Phasmo
 - Dynamic results must match all required controllers and pass repeated memory-layout validation before automation is enabled.
 - Failed or incompatible lookups leave the autosplitter safely disabled without blocking LiveSplit or reading through unvalidated pointers.
 
-## Update `1.0.18.0`
-- Added direct support for Phasmophobia `0.19.1.0`.
+## Update `1.0.19.0`
+- Improved post-contract load removal so game time resumes after the loading overlay has actually been rendered away.
 
 ## How to use
 1. Open LiveSplit.
