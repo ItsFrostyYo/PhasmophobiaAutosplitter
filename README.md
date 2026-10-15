@@ -1,6 +1,6 @@
 # LiveSplit Phasmophobia Autosplitter
 
-## This may be discontinued in the Future, 0.16.1.2, 0.19.0.0 and 0.19.0.1 Are Full Working and Tested on those Exact Builds, Future Updates Will Break the Autosplitter Especially if it Switches to Unity 6, but now it will safely fail and not crash livesplit.
+## This may be discontinued in the Future. Supported builds are tested directly, while unsupported updates safely fail instead of freezing or crashing LiveSplit.
 
 ## Description
 
@@ -17,14 +17,14 @@ Github for the Phasmophobia Autosplitter - https://github.com/ItsFrostyYo/Phasmo
 - Load Time Removal for Game Time between contract transitions.
 
 ## Supported game
-- Supported Phasmophobia versions: `0.16.1.2`, `0.19.0.0`, and `0.19.0.1`.
+- Supported Phasmophobia versions: `0.16.1.2`, `0.19.0.0`, `0.19.0.1`, and `0.19.1.0`.
 - The autosplitter verifies the exact `GameAssembly.dll` build before reading memory.
 - Unknown future builds show a warning and run one non-blocking compatibility lookup.
 - Dynamic results must match all required controllers and pass repeated memory-layout validation before automation is enabled.
 - Failed or incompatible lookups leave the autosplitter safely disabled without blocking LiveSplit or reading through unvalidated pointers.
 
-## Update `1.0.17.0`
-- Added direct support for Phasmophobia `0.19.0.1`.
+## Update `1.0.18.0`
+- Added direct support for Phasmophobia `0.19.1.0`.
 
 ## How to use
 1. Open LiveSplit.

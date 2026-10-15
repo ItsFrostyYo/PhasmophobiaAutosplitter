@@ -289,7 +289,7 @@ namespace LiveSplit.PhasmophobiaAutosplitter
                 Text = "- Re-Entering and Staying Inside the Truck WILL be Treated as a Split and Not Reset.\n"
                      + "- Multiplayer memory state can be unreliable and may cause missed or duplicate behavior.\n"
                      + "- Load-removal timing is not perfect, quitting out to lobby wont unpause the timer until Singleplayer/Multiplayer is selected again\n"
-                     + "- Unsupported builds only try a brief safe lookup; most builds other than 0.16.1.2, 0.19.0.0, and 0.19.0.1 will not work.\n"
+                     + "- Unsupported builds only try a brief safe lookup; most builds other than 0.16.1.2, 0.19.0.0, 0.19.0.1, and 0.19.1.0 will not work.\n"
                      + "- Restarting the game can rarely desync detection; reload the component or restart LiveSplit.",
                 Margin = new Padding(0),
                 TextAlign = ContentAlignment.TopLeft

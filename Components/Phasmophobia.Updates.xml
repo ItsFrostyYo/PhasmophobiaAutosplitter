@@ -120,4 +120,12 @@
             <change>Added direct support for Phasmophobia 0.19.0.1 while preserving 0.16.1.2 and 0.19.0.0 support.</change>
         </changelog>
     </update>
+    <update version="1.0.18.0">
+        <files>
+            <file path="Components/LiveSplit.PhasmophobiaAutosplitter.dll" status="changed"/>
+        </files>
+        <changelog>
+            <change>Added direct support for Phasmophobia 0.19.1.0 while preserving support for the existing build profiles.</change>
+        </changelog>
+    </update>
 </updates>
