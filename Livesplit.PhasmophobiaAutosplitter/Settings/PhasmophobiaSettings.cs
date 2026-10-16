@@ -171,7 +171,7 @@ namespace LiveSplit.PhasmophobiaAutosplitter
             {
                 AutoSize = false,
                 Size = new Size(196, 34),
-                Text = "Allow Resetting on Leave, Game Close,\r\nand New Run Start",
+                Text = "Allow Resetting on Leave\r\nand New Run Start",
                 Checked = ResetWhenAtLobby,
                 Margin = new Padding(0),
                 UseVisualStyleBackColor = true
@@ -192,7 +192,7 @@ namespace LiveSplit.PhasmophobiaAutosplitter
                 "Split:\nWhen enabled, leaving a contract after dying (forced death leave) will split instead of reset. (Mainly for Hug%)");
             toolTips.SetToolTip(
                 chkAllowResetting,
-                "Reset:\nAllows reset on contract leave, game close, and new run start detection while timer is running.\nIf this is off, all auto-reset behavior is disabled.");
+                "Reset:\nAllows reset on contract leave and new run start detection while timer is running.\nClosing the game never resets the timer. If this is off, all auto-reset behavior is disabled.");
 
             leftFlow.Controls.Add(chkStartWhenContractInitialization);
             leftFlow.Controls.Add(chkSplitOnContractFinish);

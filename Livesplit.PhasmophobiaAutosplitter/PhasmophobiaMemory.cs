@@ -215,7 +215,6 @@ namespace LiveSplit.PhasmophobiaAutosplitter
 
             OnExit += delegate
             {
-                bool automationWasActive = pointersInitialized && !unsupportedBuild;
                 processGeneration++;
                 pointersInitialized = false;
                 levelControllerStaticAddress = IntPtr.Zero;
@@ -237,9 +236,9 @@ namespace LiveSplit.PhasmophobiaAutosplitter
                 dynamicValidationDeadlineUtc = DateTime.MinValue;
                 dynamicValidationFrames = 0;
 
-                // Always prefer reset on process close so LiveSplit doesn't get stuck running.
+                // Closing or losing the game process must never alter the LiveSplit run.
                 shouldSplit = false;
-                shouldReset = automationWasActive && settings != null && settings.ResetWhenAtLobby;
+                shouldReset = false;
                 suppressResetUntilNextStart = false;
                 lastKnownLocalPlayer = IntPtr.Zero;
                 framesSinceLocalPlayerSeen = int.MaxValue;
@@ -248,9 +247,6 @@ namespace LiveSplit.PhasmophobiaAutosplitter
                 localPlayerFirstPersonMissingNow = false;
                 localPlayerDeadBodyPresentNow = false;
                 localPlayerDeathEvidenceSeenSinceStart = false;
-                if (shouldReset)
-                    logger?.Log("Reset candidate: process exit");
-
                 // Clear per-process transient signals without wiping run state flags that must be consumed.
                 keySpawnedOld = false;
                 keySpawnedNew = false;

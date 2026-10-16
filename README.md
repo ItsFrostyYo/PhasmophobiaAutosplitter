@@ -12,7 +12,7 @@ Github for the Phasmophobia Autosplitter - https://github.com/ItsFrostyYo/Phasmo
 - Start when the contract is initialized and the player can move.
 - Split on contract finish when leaving from truck context.
 - Split on leaving the contract after dying to the ghost when `Split on Death Leave` is enabled.
-- Reset on non-finish leave, game close, or new-run start (configurable).
+- Reset on non-finish leave or new-run start (configurable); closing the game never resets the timer.
 - Multi-Contract support to chain contracts in one attempt.
 - Load Time Removal for Game Time between contract transitions.
 
@@ -46,7 +46,7 @@ Splits on contract-finish leave transition from truck context.
 - `Split on Death Leave`
 Splits on Leaving the Contract after Dying to the Ghost. (Mainly for Hug%)
 ### Reset
-- `Allow Resetting on Contract Leave, Game Close and New Run Start`
+- `Allow Resetting on Contract Leave and New Run Start`
 Master toggle for all auto-reset behavior.
 
 ### Options
